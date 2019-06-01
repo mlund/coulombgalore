@@ -1,4 +1,4 @@
-#include "coulomb.h"
+#include "coulombgalore.h"
 #include <iostream>
 
 using namespace CoulombGalore;

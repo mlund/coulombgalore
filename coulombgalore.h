@@ -160,16 +160,17 @@ struct qPotential : public SchemeBase {
 
     inline double splitting_function(double q) const override { return qPochhammerSymbol(q, 1, order); }
     inline double calc_dielectric(double M2V) const override { return 1 + 3 * M2V; }
-};
+
 #ifdef NLOHMANN_JSON_HPP
-void from_json(const nlohmann::json &j, qPotential &pot) {
-    pot.cutoff = j.at("cutoff").get<double>();
-    pot.order = j.at("order").get<double>();
-}
-void to_json(nlohmann::json &j, const qPotential &pot) {
-    j = {{"cutoff", cutoff}, {"order", order}};
-}
+    inline void from_json(const nlohmann::json &j) {
+        cutoff = j.at("cutoff").get<double>();
+        order = j.at("order").get<double>();
+    }
+    inline void to_json(nlohmann::json &j) {
+        j = {{"cutoff", cutoff}, {"order", order}};
+    }
 #endif
+};
 
 #ifdef DOCTEST_LIBRARY_INCLUDED
 TEST_CASE("[CoulombGalore] qPotential") {
@@ -194,15 +195,15 @@ struct Poisson : public SchemeBase {
 
     inline Poisson(double cutoff, unsigned int C, unsigned int D)
         : SchemeBase(TruncationScheme::poisson, cutoff), C(C), D(D) {
-        if ((C < 1) or (D < 1))
-            throw std::runtime_error("`C` and `D` must be larger than zero");
-        self_energy_prefactor = -double(C + D) / double(C);
-    }
+            if ((C < 1) or (D < 1))
+                throw std::runtime_error("`C` and `D` must be larger than zero");
+            self_energy_prefactor = -double(C + D) / double(C);
+        }
     inline double splitting_function(double q) const override {
         double tmp = 0;
         for (unsigned int c = 0; c < C; c++)
             tmp += double(factorial(D - 1 + c)) / double(factorial(D - 1)) / double(factorial(c)) * double(C - c) /
-                   double(C) * std::pow(q, c);
+                double(C) * std::pow(q, c);
         return std::pow(1 - q, D + 1) * tmp;
     }
 
@@ -212,5 +213,5 @@ struct Poisson : public SchemeBase {
 TEST_CASE("[CoulombGalore] Poisson") {
 }
 #endif
- 
+
 } // namespace CoulombGalore

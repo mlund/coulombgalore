@@ -30,8 +30,8 @@ if(NOT doctest_POPULATED)
     add_definitions(-DDOCTEST_CONFIG_DISABLE)
 endif()
 
-include_directories(SYSTEM ${eigen_SOURCE_DIR} ${doctest_SOURCE_DIR})
+include_directories(SYSTEM ${eigen_SOURCE_DIR} ${doctest_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
 
-add_executable(example src/example.cpp)
-add_executable(unittests src/unittests.cpp)
+add_executable(example test/example.cpp)
+add_executable(unittests test/unittests.cpp)
 add_test(NAME unittests COMMAND unittests)
