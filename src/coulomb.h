@@ -48,6 +48,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
 
     /**
      * @brief ion-ion interaction energy
+     * @returns interaction energy in electrostatic units
      * @param zz charge product
      * @param r charge separation
      */
@@ -60,6 +61,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
 
     /**
      * @param zz charge product
+     * @returns self energy in electrostatic units
      * @param mumu product between dipole moment scalars
      */
     inline double self_energy(double zz, double mumu) const {
@@ -128,6 +130,7 @@ struct qPotential : public SchemeBase {
      */
     inline qPotential(double cutoff, double order) : SchemeBase(TruncationScheme::qpotential, cutoff), order(order) {
         name = "qpotential";
+        self_energy_prefactor = -1;
     }
 
     inline double splitting_function(double q) const override { return qPochhammerSymbol(q, 1, order); }
@@ -142,8 +145,8 @@ TEST_CASE("[CoulombGalore] qPotential") {
 
     PairPotential<qPotential> pot(cutoff, 3);
     CHECK(pot.splitting_function(0.5) == Approx(0.328125));
-    CHECK(pot.ion_ion(zz,cutoff) == Approx(0));
-    CHECK(pot.ion_ion(zz,r.norm()) == Approx(0.1018333173));
+    CHECK(pot.ion_ion(zz, cutoff) == Approx(0));
+    CHECK(pot.ion_ion(zz, r.norm()) == Approx(0.1018333173));
 }
 #endif
 
