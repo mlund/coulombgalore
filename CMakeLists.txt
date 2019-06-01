@@ -9,7 +9,7 @@ enable_testing()
 
 include(FetchContent)
 
-# EIGEN
+# download Eigen
 FetchContent_Declare(
     eigen
     URL "http://bitbucket.org/eigen/eigen/get/3.3.7.tar.gz"
@@ -19,7 +19,7 @@ if(NOT eigen_POPULATED)
     FetchContent_Populate(eigen)
 endif()
  
-# DOCTEST
+# download doctest
 FetchContent_Declare(
     doctest
     URL "https://github.com/onqtam/doctest/archive/2.2.0.tar.gz"
@@ -32,5 +32,6 @@ endif()
 
 include_directories(SYSTEM ${eigen_SOURCE_DIR} ${doctest_SOURCE_DIR})
 
+add_executable(example src/example.cpp)
 add_executable(unittests src/unittests.cpp)
 add_test(NAME unittests COMMAND unittests)

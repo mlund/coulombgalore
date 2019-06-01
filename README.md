@@ -1,3 +1,12 @@
 # Coulomb Galore
 
-C++ Library for Electrostatics
+Header-only C++11 Library for Electrostatics
+
+## Testing
+
+~~~ bash
+cmake .
+make
+make test
+~~~
+

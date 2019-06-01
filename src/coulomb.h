@@ -161,6 +161,15 @@ struct qPotential : public SchemeBase {
     inline double splitting_function(double q) const override { return qPochhammerSymbol(q, 1, order); }
     inline double calc_dielectric(double M2V) const override { return 1 + 3 * M2V; }
 };
+#ifdef NLOHMANN_JSON_HPP
+void from_json(const nlohmann::json &j, qPotential &pot) {
+    pot.cutoff = j.at("cutoff").get<double>();
+    pot.order = j.at("order").get<double>();
+}
+void to_json(nlohmann::json &j, const qPotential &pot) {
+    j = {{"cutoff", cutoff}, {"order", order}};
+}
+#endif
 
 #ifdef DOCTEST_LIBRARY_INCLUDED
 TEST_CASE("[CoulombGalore] qPotential") {
