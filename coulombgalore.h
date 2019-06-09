@@ -56,7 +56,7 @@ TEST_CASE("qPochhammerSymbol") {
  * @brief Base class for truncation schemes
  *
  * Derived classes must implement the splitting function which
- * does not need to be highly optimized it will later be splined.
+ * does not need to be highly optimized as it will later be splined.
  */
 class SchemeBase {
   public:
@@ -80,6 +80,28 @@ class SchemeBase {
      * @param M2V system dipole moment fluctuation
      */
     virtual double calc_dielectric(double) const = 0;
+
+#ifdef NLOHMANN_JSON_HPP
+  private:
+    virtual void _to_json(nlohmann::json &) const = 0;
+    virtual void _from_json(const nlohmann::json &) = 0;
+
+  public:
+    inline void from_json(const nlohmann::json &j) {
+        if (scheme != TruncationScheme::plain)
+            cutoff = j.at("cutoff").get<double>();
+        _from_json(j);
+    }
+    inline void to_json(nlohmann::json &j) const {
+        _to_json(j);
+        if (cutoff < infty)
+            j["cutoff"] = cutoff;
+        if (not doi.empty())
+            j["doi"] = doi;
+        if (not name.empty())
+            j["type"] = name;
+    }
+#endif
 };
 
 /**
@@ -89,7 +111,6 @@ class SchemeBase {
 template <class Tscheme> class PairPotential : public Tscheme {
   private:
     double invcutoff; // inverse cutoff distance
-
   public:
     using Tscheme::cutoff;
     using Tscheme::self_energy_prefactor;
@@ -111,6 +132,18 @@ template <class Tscheme> class PairPotential : public Tscheme {
     }
 
     /**
+     * @brief ion-dipole interaction energy
+     * @todo add arguments
+     */
+    inline double ion_dipole() { return 0; }
+
+    /**
+     * @brief dipole-dipole interaction energy
+     * @todo add arguments
+     */
+    inline double dipole_dipole() { return 0; }
+
+    /**
      * @param zz charge product
      * @returns self energy in electrostatic units
      * @param mumu product between dipole moment scalars
@@ -118,9 +151,9 @@ template <class Tscheme> class PairPotential : public Tscheme {
     inline double self_energy(double zz, double mumu) const {
         return self_energy_prefactor * invcutoff * (zz + mumu * invcutoff * invcutoff);
     }
-
-    // double dip_dip(...) // expand with higher order interactions...
 };
+
+// -------------- Plain ---------------
 
 /**
  * @brief No truncation scheme
@@ -129,6 +162,11 @@ struct Plain : public SchemeBase {
     inline Plain() : SchemeBase(TruncationScheme::plain, infty){};
     inline double splitting_function(double q) const override { return 1.0; };
     inline double calc_dielectric(double M2V) const override { return (2 * M2V + 1) / (1 - M2V); }
+#ifdef NLOHMANN_JSON_HPP
+  private:
+    inline void _to_json(nlohmann::json &) const override {}
+    inline void _from_json(const nlohmann::json &) override {}
+#endif
 };
 
 #ifdef DOCTEST_LIBRARY_INCLUDED
@@ -142,6 +180,8 @@ TEST_CASE("[CoulombGalore] plain") {
     CHECK(pot.ion_ion(zz, r.norm()) == Approx(zz / r.norm()));
 }
 #endif
+
+// -------------- qPotential ---------------
 
 /**
  * @brief qPotential scheme
@@ -162,13 +202,9 @@ struct qPotential : public SchemeBase {
     inline double calc_dielectric(double M2V) const override { return 1 + 3 * M2V; }
 
 #ifdef NLOHMANN_JSON_HPP
-    inline void from_json(const nlohmann::json &j) {
-        cutoff = j.at("cutoff").get<double>();
-        order = j.at("order").get<double>();
-    }
-    inline void to_json(nlohmann::json &j) {
-        j = {{"cutoff", cutoff}, {"order", order}};
-    }
+  private:
+    inline void _from_json(const nlohmann::json &j) override { order = j.at("order").get<double>(); }
+    inline void _to_json(nlohmann::json &j) const override { j = {{"order", order}}; }
 #endif
 };
 
@@ -186,6 +222,8 @@ TEST_CASE("[CoulombGalore] qPotential") {
 }
 #endif
 
+// -------------- Poisson ---------------
+
 /**
  * @brief Poisson approximation
  */
@@ -195,23 +233,31 @@ struct Poisson : public SchemeBase {
 
     inline Poisson(double cutoff, unsigned int C, unsigned int D)
         : SchemeBase(TruncationScheme::poisson, cutoff), C(C), D(D) {
-            if ((C < 1) or (D < 1))
-                throw std::runtime_error("`C` and `D` must be larger than zero");
-            self_energy_prefactor = -double(C + D) / double(C);
-        }
+        if ((C < 1) or (D < 1))
+            throw std::runtime_error("`C` and `D` must be larger than zero");
+        self_energy_prefactor = -double(C + D) / double(C);
+    }
     inline double splitting_function(double q) const override {
         double tmp = 0;
         for (unsigned int c = 0; c < C; c++)
             tmp += double(factorial(D - 1 + c)) / double(factorial(D - 1)) / double(factorial(c)) * double(C - c) /
-                double(C) * std::pow(q, c);
+                   double(C) * std::pow(q, c);
         return std::pow(1 - q, D + 1) * tmp;
     }
 
     inline double calc_dielectric(double M2V) const override { return 1 + 3 * M2V; }
+
+#ifdef NLOHMANN_JSON_HPP
+  private:
+    inline void _from_json(const nlohmann::json &j) override {
+        C = j.at("C").get<double>();
+        D = j.at("D").get<double>();
+    }
+    inline void _to_json(nlohmann::json &j) const override { j = {{"C", C}, {"D", D}}; }
+#endif
 };
 #ifdef DOCTEST_LIBRARY_INCLUDED
-TEST_CASE("[CoulombGalore] Poisson") {
-}
+TEST_CASE("[CoulombGalore] Poisson") {}
 #endif
 
 } // namespace CoulombGalore

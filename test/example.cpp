@@ -1,3 +1,4 @@
+#include <nlohmann/json.hpp>
 #include "coulombgalore.h"
 #include <iostream>
 
@@ -11,12 +12,27 @@ int main() {
         kB = 1.380658e-23;         // Boltzmann's constant [J/K]
 
     double z1 = 1, z2 = 2;     // two monopoles
-    Point r = {7.0e-10, 0, 0}; // a distance vector (meters)
+    double cutoff = 18e-10;    // cutoff distance, here in meters [m]
+    Point r = {7.0e-10, 0, 0}; // a distance vector, use same using as cutoff, i.e. [m]
 
     // energies are returned in electrostatic units and we must multiply
-    // with the Coulombic to get more familiar units:
-    double bjerrum_length = e * e / (4 * pi * e0 * kB * T); // meters
+    // with the Coulombic constant to get more familiar units:
+    double bjerrum_length = e * e / (4 * pi * e0 * kB * T); // [m]
 
-    PairPotential<Plain> pot;
-    std::cout << "ion-ion energy: " << bjerrum_length * pot.ion_ion(z1 * z2, r.norm()) << " kT" << std::endl;
+    // this is just the plain old Coulomb potential
+    PairPotential<Plain> pot_plain;
+    double u12 = pot_plain.ion_ion(z1 * z2, r.norm());
+    std::cout << "plain ion-ion energy:      " << bjerrum_length * u12 << " kT" << std::endl;
+
+    // this is a truncated potential
+    PairPotential<qPotential> pot_qpot(cutoff, 3);
+    u12 = pot_qpot.ion_ion(z1 * z2, r.norm());
+    std::cout << "qPotential ion-ion energy: " << bjerrum_length * u12 << " kT" << std::endl;
+
+#ifdef NLOHMANN_JSON_HPP
+    // if available, json can be used to (de)serialize
+    nlohmann::json j;
+    pot_qpot.to_json(j);
+    std::cout << j << std::endl;
+#endif
 }

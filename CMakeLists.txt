@@ -9,6 +9,26 @@ enable_testing()
 
 include(FetchContent)
 
+## GCC
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    add_compile_options(-Wall -Wextra -Wpedantic -Wunreachable-code -Wstrict-aliasing
+        -Wno-sign-compare -Wno-unused-local-typedefs -Wno-unknown-pragmas)
+## Clang
+elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-Wall -Wextra -Wpedantic -Wunreachable-code
+        -Wstrict-aliasing -Wno-sign-compare -Wno-unused-local-typedef -Wno-unknown-pragmas)
+endif()
+
+# download modern json
+FetchContent_Declare(
+    modernjson
+    URL "https://github.com/nlohmann/json/releases/download/v3.5.0/include.zip"
+    URL_HASH SHA256=3564da9c5b0cf2e032f97c69baedf10ddbc98030c337d0327a215ea72259ea21)
+FetchContent_GetProperties(modernjson)
+if(NOT modernjson_POPULATED)
+    FetchContent_Populate(modernjson)
+endif()
+
 # download Eigen
 FetchContent_Declare(
     eigen
@@ -30,7 +50,7 @@ if(NOT doctest_POPULATED)
     add_definitions(-DDOCTEST_CONFIG_DISABLE)
 endif()
 
-include_directories(SYSTEM ${eigen_SOURCE_DIR} ${doctest_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
+include_directories(SYSTEM ${eigen_SOURCE_DIR} ${doctest_SOURCE_DIR} ${modernjson_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
 
 add_executable(example test/example.cpp)
 add_executable(unittests test/unittests.cpp)
