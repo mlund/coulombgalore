@@ -65,7 +65,7 @@ class SchemeBase {
     std::string name;                 //!< Descriptive name
     TruncationScheme scheme;          //!< Truncation scheme
     double cutoff;                    //!< Cut-off distance
-    std::vector<double> self_energy_prefactor; //!< Prefactor for self-energies
+    std::array<double> self_energy_prefactor; //!< Prefactor for self-energies
     inline SchemeBase(TruncationScheme scheme, double cutoff) : scheme(scheme), cutoff(cutoff) {}
 
     /**
@@ -81,6 +81,10 @@ class SchemeBase {
 
     virtual double splitting_function_second_derivative(double q, double dh=1e-6) {
         return ( splitting_function_derivative(q + dh , dh ) - splitting_function_derivative(q - dh , dh ) ) / ( 2 * dh );
+    }
+
+    virtual double splitting_function_third_derivative(double q, double dh=1e-6) {
+        return ( splitting_function_second_derivative(q + dh , dh ) - splitting_function_second_derivative(q - dh , dh ) ) / ( 2 * dh );
     }
 
     /**
@@ -115,6 +119,8 @@ class SchemeBase {
 /**
  * @brief Class for calculation of interaction energies
  * @todo Replace this with a splined version
+ *
+ * @details In the following @f[ s(q) @f] is a short-ranged function and @f[ q = r / R_c @f] where @f[ R_c @f] is the cut-off distance.
  */
 template <class Tscheme> class PairPotential : public Tscheme {
   private:
@@ -126,6 +132,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
     using Tscheme::splitting_function;
     using Tscheme::splitting_function_derivative;
     using Tscheme::splitting_function_second_derivative;
+    using Tscheme::splitting_function_third_derivative;
 
     template <class... Args> PairPotential(Args &&... args) : Tscheme(args...) {
       invcutoff = 1.0 / cutoff;
@@ -133,16 +140,45 @@ template <class Tscheme> class PairPotential : public Tscheme {
     }
 
     /**
-     * @brief ion-ion interaction energy
-     * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
-     * @param zz charge product
+     * @brief ion potential
+     * @returns potential from ion in electrostatic units ( why not Hartree atomic units? )
+     * @param z charge
      * @param r charge separation
+     *
+     * @details The potential from a charge is described by
+     * @f[
+     *     \Phi({\bf r},z) = \frac{z}{|{\bf r}|}s(q)
+     * @f]
+     *
      */
-    inline double ion_ion_energy(double zz, double r) {
+    inline double ion_potential(double z, double r) {
         if ( r < cutoff )
-            return zz / r * splitting_function(r * invcutoff);
+            return z / r * splitting_function(r * invcutoff);
         else
             return 0.0;
+    }
+
+    /**
+     * @brief dipole potential
+     * @returns potential from dipole in electrostatic units ( why not Hartree atomic units? )
+     * @param mu dipole
+     * @param r distance-vector from dipole
+     *
+     * @details The potential from a charge is described by
+     * @f[
+     *     \Phi({\bf r},{\bf \mu}) = \frac{{\bf \mu} \cdot \hat{{\bf r}} }{|{\bf r}|^2} \left( s(q) - qs^{\prime}(q) \right)
+     * @f]
+     *
+     */
+    inline double dipole_potential(Point mu, Point r) {
+        double r2 = r.squaredNorm();
+        if ( r2 < cutoff2 ) {
+            double r1 = std::sqrt(r2);
+            double q = r1 * invcutoff;
+            return mu.dot(r) / r2 / r1  * ( splitting_function(q) - q * splitting_function_derivative(q) );
+        } else {
+            return 0.0;
+        }
     }
 
     /**
@@ -150,35 +186,60 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @returns field in electrostatic units ( why not Hartree atomic units? )
      * @param z charge
      * @param r distance-vector to charge
+     *
+     * @details The field from a charge is described by
+     * @f[
+     *     {\bf E}({\bf r},z) = -\nabla \Phi({\bf r},z) = \frac{z \hat{{\bf r}} }{|{\bf r}|^2} \left( s(q) - qs^{\prime}(q) \right)
+     * @f]
+     *
      */
     inline Point ion_field(double z, Point r) {
         double r2 = r.squaredNorm();
-        if ( r2 < cutoff2 )
-            return z / r2 * ( splitting_function(r * invcutoff) - r * invcutoff * splitting_function_derivative(r * invcutoff) ) * ( r / std::sqrt(r2) );
-        else
+        if ( r2 < cutoff2 ) {
+            double r1 = std::sqrt(r2);
+            double q = r1 * invcutoff;
+            return z * r / r2 / r1 * ( splitting_function(q) - q * splitting_function_derivative(q) );
+        } else {
             return {0,0,0};
+        }
+    }
+
+    /**
+     * @brief field from dipole
+     * @returns field in electrostatic units ( why not Hartree atomic units? )
+     * @param mu dipole
+     * @param r distance-vector to dipole
+     * @note not finished
+     *
+     * @details The field from a dipole is described by
+     * @f[
+     *     {\bf E}({\bf r},{\bf \mu}) = -\nabla \Phi({\bf r},{\bf \mu}) = \frac{3 ( {\bf \mu} \cdot \hat{{\bf r}} ) \hat{{\bf r}} - \hat{{\bf \mu}} }{|{\bf r}|^3}
+     * @f]
+     *
+     */
+    inline Point dipole_field(Point mu, Point r) {
+        double r2 = r.squaredNorm();
+        if ( r2 < cutoff2 ) {
+            double r1 = std::sqrt(r2);
+            double q = r1 * invcutoff;
+            double second_derivative_scaled = q * q / 3.0 * splitting_function_second_derivative(q);
+            Point field = ( 3.0 * mu.dot(r) * r / r2 - mu ) / r2 / r1 * ( splitting_function(q) - q * splitting_function_derivative(q) + second_derivative_scaled );
+            field += mu / r2 / r1 * second_derivative_scaled;
+            return field;
+        } else {
+            return {0,0,0};
+        }
     }
 
     /**
      * @brief ion-ion interaction force
      * @returns interaction force in electrostatic units ( why not Hartree atomic units? )
-     * @param zz charge product
+     * @param zA charge
+     * @param zB charge
      * @param r distance-vector between charges
      */
-    inline Point ion_ion_force(double zz, Point r) {
-        return ion_field(zz,r);
-    }
-
-    /**
-     * @brief ion-dipole interaction energy
-     * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
-     * @param z charge
-     * @param mu dipole moment
-     * @param r distance-vector between dipole and charge, mu - z
-     * @note the direction of r is from charge towards dipole
-     */
-    inline double ion_dipole_energy(double z, Point mu, Point r) {
-        return ion_field(z,r).dot(mu);
+    inline Point ion_ion_force(double zA, double zB, Point r) {
+        return ion_field(zA,r)*zB;
     }
 
     /**
@@ -189,57 +250,9 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @param r distance-vector between dipole and charge, mu - z
      */
     inline Point ion_dipole_force(double z, Point mu, Point r) {
-        double r2 = r.squaredNorm();
-        if ( r2 < cutoff2 ) {
-	    double r1 = std::sqrt(r2);
-            double q = r1 * invcutoff;
-	    double b = splitting_function(q) - q * splitting_function_derivative(q);
-            double a = b + q * q / 3.0 * splitting_function_second_derivative(q);
-            return z * ( 3.0 * mu.dot(r) * r / r2 * a - mu * b ) / r2 / r1;
-        } else {
-            return {0,0,0};
-        }
+        return dipole_field(mu,r)*z;
     }
 
-    /**
-     * @brief dipole-dipole interaction energy
-     * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
-     * @param muA dipole moment of particle A
-     * @param muB dipole moment of particle B
-     * @param r distance-vector between dipoles
-     */
-    inline double dipole_dipole_energy(Point muA, Point muB, Point r) {
-        double r2 = r.squaredNorm();
-        if ( r2 < cutoff2 ) {
-            double r1 = std::sqrt(r2);
-            double q = r1 * invcutoff;
-            double b = q * q / 3.0 * splitting_function_second_derivative(q);
-            double a = splitting_function(q) - q * splitting_function_derivative(q) + b;
-
-            double dotproduct = muA.dot(muB);
-            double T = (3 * muA.dot(r) * muB.dot(r) / r2 - dotproduct) * a + dotproduct * b;
-            return - T / r2 / r1;
-        } else {
-            return 0.0;
-        }
-    }
-    
-    /**
-     * @brief field from dipole
-     * @returns field in electrostatic units ( why not Hartree atomic units? )
-     * @param mu dipole
-     * @param r distance-vector to dipole
-     * @note not finished
-     */
-    inline Point dipole_field(Point mu, Point r) {
-        double r2 = r.squaredNorm();
-        if ( r2 < cutoff2 ) {
-            return {0,0,0};
-        } else {
-            return {0,0,0};
-        }
-    }
-    
     /**
      * @brief dipole-dipole interaction energy
      * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
@@ -251,10 +264,54 @@ template <class Tscheme> class PairPotential : public Tscheme {
     inline Point dipole_dipole_force(Point muA, Point muB, Point r) {
         double r2 = r.squaredNorm();
         if ( r2 < cutoff2 ) {
-            return {0,0,0};
+            double r1 = std::sqrt(r2);
+            Point rh = r / r1;
+            double q = r1 * invcutoff;
+            double r4 = r2 * r2;
+            double muAdotRh = muA.dot(rh);
+            double muBdotRh = muB.dot(rh);
+            Point force = 3.0 * ( ( 5.0* muAdotRh*muBdotRh - muA.dot(muB) ) * rh - muBdotRh * muA + muAdotRh * muB  ) / r4;
+            double second_derivative = splitting_function_second_derivative(q);
+            force *= ( splitting_function(q) - q * splitting_function_derivative(q) + q * q / 3.0 * second_derivative );
+            force += muAdotRh * muBdotRh * rh / r4 *( second_derivative - q * splitting_function_third_derivative(q) ) * q * q;
+            return force;
         } else {
             return {0,0,0};
         }
+    }
+
+    /**
+     * @brief ion-ion interaction energy
+     * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
+     * @param zA charge
+     * @param zB charge
+     * @param r charge separation
+     */
+    inline double ion_ion_energy(double zA, double zB, double r) {
+        return ion_potential(zA,r)*zB;
+    }
+
+    /**
+     * @brief ion-dipole interaction energy
+     * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
+     * @param z charge
+     * @param mu dipole moment
+     * @param r distance-vector between dipole and charge, mu - z
+     * @note the direction of r is from charge towards dipole
+     */
+    inline double ion_dipole_energy(double z, Point mu, Point r) {
+        return -mu.dot(ion_field(z,r));
+    }
+
+    /**
+     * @brief dipole-dipole interaction energy
+     * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
+     * @param muA dipole moment of particle A
+     * @param muB dipole moment of particle B
+     * @param r distance-vector between dipoles
+     */
+    inline double dipole_dipole_energy(Point muA, Point muB, Point r) {
+        return -muA.dot(dipole_field(muB,r));
     }
 
     /**
@@ -263,7 +320,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @returns self energy in electrostatic units ( why not Hartree atomic units? )
      * @param mumu product between dipole moment scalars
      */
-    inline double self_energy(std::vector<double> m2) const {
+    inline double self_energy(std::array<double> m2) const {
       if( self_energy_prefactor.size() != m2.size() )
             throw std::runtime_error("Vectors of self energy prefactors and squared moment are not equal in size!");
 
@@ -273,6 +330,30 @@ template <class Tscheme> class PairPotential : public Tscheme {
       return e_self;
     }
 };
+#ifdef DOCTEST_LIBRARY_INCLUDED
+TEST_CASE("[CoulombGalore] field-, force-, and energy-functions") {
+    using doctest::Approx;
+    double cutoff = 20.0;  // cutoff distance
+    double zA = 2.0; // charge
+    double zB = 2.0; // charge
+    Point muA = {3, 0, 0}; // dipole
+    Point muB = {3, 0, 0}; // dipole
+    Point r = {11, 0, 0};  // distance vector
+
+    PairPotential<plain> pot(cutoff);
+
+    CHECK(pot.ion_field(zA, r) == Approx({0.016528925619835,0,0}));
+    CHECK(pot.dipole_field(muA, r) == Approx({0,0,0})); // not implemented yet
+
+    CHECK(pot.ion_ion_force(zA, zB, r) == Approx({0,0,0}));
+    CHECK(pot.ion_dipole_force(zA, muB, r) == Approx({0,0,0}));
+    CHECK(pot.dipole_dipole_force(muA, muB, r) == Approx({0,0,0}));
+
+    CHECK(pot.ion_ion_energy(zA, zB, r) == Approx(0.363636363636364));
+    CHECK(pot.ion_dipole_energy(zA, muB, r) == Approx(0));
+    CHECK(pot.dipole_dipole_energy(muA, muB, r) == Approx(0));
+}
+#endif
 
 // -------------- Plain ---------------
 
