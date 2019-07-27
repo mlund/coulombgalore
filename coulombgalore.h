@@ -52,9 +52,6 @@ inline double qPochhammerSymbolDerivative(double q, int l = 0, int P = 300) {
     return value / q * qPochhammerSymbol(q,l,P);
 }
 
-/**
- * @warning Does not work!
- */
 inline double qPochhammerSymbolSecondDerivative(double q, int l = 0, int P = 300) {
     double value = 0.0;
     double qln = std::pow(q, l+1); // a * q^{n-1} = q^{l+n}
@@ -68,13 +65,56 @@ inline double qPochhammerSymbolSecondDerivative(double q, int l = 0, int P = 300
     return ( value * qPS + dqPS * dqPS / qPS );
 }
 
+inline double qPochhammerSymbolThirdDerivative(double q, int l = 0, int P = 300) {
+    double S1 = 0.0;
+    double S2 = 0.0;
+    double S3 = 0.0;
+    double qln = std::pow(q, l+1); // a * q^{n-1} = q^{l+n}
+    for (int n = 1; n < P + 1; n++) {
+	double tmp = ( l + n ) / ( 1 - qln );
+	S1 -= tmp * qln;
+	S2 += tmp * tmp * qln;
+	S3 += tmp * tmp * tmp * qln * (1.0 + qln);
+        qln *= q;
+    }
+
+    double dS1 = -1.0 / q * S2;
+    double ddS1 = 1.0 / q / q *( S2 - S3 );
+
+    double qPS = qPochhammerSymbol(q,l,P);
+    double dqPS = qPochhammerSymbolDerivative(q,l,P);
+    double ddqPS = qPochhammerSymbolSecondDerivative(q,l,P);
+
+    double ans = 3.0*ddqPS*dqPS / qPS / qPS - 2.0*pow(dqPS/qPS,3.0) + ddS1/q - 2.0*dS1 / q / q + 2.0*S1 / q / q / q;
+    ans = ans * qPS;
+    return ans;
+}
+
 #ifdef DOCTEST_LIBRARY_INCLUDED
 TEST_CASE("qPochhammerSymbol") {
+    using doctest::Approx;
     double q = 0.5;
     CHECK(qPochhammerSymbol(q, 0, 0) == 1);
     CHECK(qPochhammerSymbol(0, 0, 1) == 1);
     CHECK(qPochhammerSymbol(1, 0, 1) == 0);
     CHECK(qPochhammerSymbol(1, 1, 2) == 0);
+
+    CHECK(qPochhammerSymbol(0.75, 0, 2) == Approx(0.109375));
+    CHECK(qPochhammerSymbol(2.0/3.0, 2, 5) == Approx(0.4211104676));
+    CHECK(qPochhammerSymbol(0.125, 1, 1) == Approx(0.984375));
+
+    CHECK(qPochhammerSymbolDerivative(0.75, 0, 2) == Approx(-0.8125));
+    CHECK(qPochhammerSymbolDerivative(2.0/3.0, 2, 5) == Approx(-2.538458169));
+    CHECK(qPochhammerSymbolDerivative(0.125, 1, 1) == Approx(-0.25));
+
+    CHECK(qPochhammerSymbolSecondDerivative(0.75, 0, 2) == Approx(2.5));
+    CHECK(qPochhammerSymbolSecondDerivative(2.0/3.0, 2, 5) == Approx(-1.444601767));
+    CHECK(qPochhammerSymbolSecondDerivative(0.125, 1, 1) == Approx(-2.0));
+
+    CHECK(qPochhammerSymbolThirdDerivative(0.75, 0, 2) == Approx(6.0));
+    CHECK(qPochhammerSymbolThirdDerivative(2.0/3.0, 2, 5) == Approx(92.48631425));
+    CHECK(qPochhammerSymbolThirdDerivative(0.125, 1, 1) == Approx(0.0));
+    CHECK(qPochhammerSymbolThirdDerivative(0.4, 3, 7) == Approx(-32.80472205));
 }
 #endif
 
@@ -101,15 +141,15 @@ class SchemeBase {
      */
     virtual double short_range_function(double) const = 0;
 
-    virtual double short_range_function_derivative(double q, double dh=1e-9) {
+    virtual double short_range_function_derivative(double q, double dh=1e-6) {
         return ( short_range_function(q + dh) - short_range_function(q - dh) ) / ( 2 * dh );
     }
 
-    virtual double short_range_function_second_derivative(double q, double dh=1e-9) {
+    virtual double short_range_function_second_derivative(double q, double dh=1e-6) {
         return ( short_range_function_derivative(q + dh , dh ) - short_range_function_derivative(q - dh , dh ) ) / ( 2 * dh );
     }
 
-    virtual double short_range_function_third_derivative(double q, double dh=1e-9) {
+    virtual double short_range_function_third_derivative(double q, double dh=1e-6) {
         return ( short_range_function_second_derivative(q + dh , dh ) - short_range_function_second_derivative(q - dh , dh ) ) / ( 2 * dh );
     }
 
@@ -517,6 +557,7 @@ struct qPotential : public SchemeBase {
     inline double short_range_function(double q) const override { return qPochhammerSymbol(q, 0, order); }
     inline double short_range_function_derivative(double q) const { return qPochhammerSymbolDerivative(q, 0, order); }
     inline double short_range_function_second_derivative(double q) const { return qPochhammerSymbolSecondDerivative(q, 0, order); }
+    inline double short_range_function_third_derivative(double q) const { return qPochhammerSymbolThirdDerivative(q, 0, order); }
     inline double calc_dielectric(double M2V) const override { return 1 + 3 * M2V; }
 
 #ifdef NLOHMANN_JSON_HPP
@@ -543,6 +584,8 @@ TEST_CASE("[CoulombGalore] qPotential") {
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.3076171875));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-1.453125));
+    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(1.9140625));
+    CHECK(pot.short_range_function_third_derivative(0.5) == Approx(17.25));
 }
 
 #endif
