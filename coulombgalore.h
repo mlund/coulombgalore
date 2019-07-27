@@ -236,8 +236,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @brief field from dipole
      * @returns field in electrostatic units ( why not Hartree atomic units? )
      * @param mu dipole
-     * @param r distance-vector to dipole
-     * @note not finished
+     * @param r distance-vector
      *
      * @details The field from a dipole is described by
      * @f[
@@ -267,7 +266,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @param r charge separation
      */
     inline double ion_ion_energy(double zA, double zB, double r) {
-        return ion_potential(zA,r)*zB;
+        return zB * ion_potential(zA,r);
     }
 
     /**
@@ -303,7 +302,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @param r distance-vector between charges
      */
     inline Point ion_ion_force(double zA, double zB, Point r) {
-        return ion_field(zA,r)*zB;
+        return zB * ion_field(zA,r);
     }
 
     /**
@@ -314,7 +313,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @param r distance-vector between dipole and charge, mu - z
      */
     inline Point ion_dipole_force(double z, Point mu, Point r) {
-        return dipole_field(mu,r)*z;
+        return z * dipole_field(mu,r);
     }
 
     /**
