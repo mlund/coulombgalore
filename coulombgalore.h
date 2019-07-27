@@ -99,18 +99,18 @@ class SchemeBase {
      * @param q q=r/Rcutoff
      * @todo How should this be expanded to higher order moments?
      */
-    virtual double splitting_function(double) const = 0;
+    virtual double short_range_function(double) const = 0;
 
-    virtual double splitting_function_derivative(double q, double dh=1e-9) {
-        return ( splitting_function(q + dh) - splitting_function(q - dh) ) / ( 2 * dh );
+    virtual double short_range_function_derivative(double q, double dh=1e-9) {
+        return ( short_range_function(q + dh) - short_range_function(q - dh) ) / ( 2 * dh );
     }
 
-    virtual double splitting_function_second_derivative(double q, double dh=1e-9) {
-        return ( splitting_function_derivative(q + dh , dh ) - splitting_function_derivative(q - dh , dh ) ) / ( 2 * dh );
+    virtual double short_range_function_second_derivative(double q, double dh=1e-9) {
+        return ( short_range_function_derivative(q + dh , dh ) - short_range_function_derivative(q - dh , dh ) ) / ( 2 * dh );
     }
 
-    virtual double splitting_function_third_derivative(double q, double dh=1e-9) {
-        return ( splitting_function_second_derivative(q + dh , dh ) - splitting_function_second_derivative(q - dh , dh ) ) / ( 2 * dh );
+    virtual double short_range_function_third_derivative(double q, double dh=1e-9) {
+        return ( short_range_function_second_derivative(q + dh , dh ) - short_range_function_second_derivative(q - dh , dh ) ) / ( 2 * dh );
     }
 
     /**
@@ -155,10 +155,10 @@ template <class Tscheme> class PairPotential : public Tscheme {
   public:
     using Tscheme::cutoff;
     using Tscheme::self_energy_prefactor;
-    using Tscheme::splitting_function;
-    using Tscheme::splitting_function_derivative;
-    using Tscheme::splitting_function_second_derivative;
-    using Tscheme::splitting_function_third_derivative;
+    using Tscheme::short_range_function;
+    using Tscheme::short_range_function_derivative;
+    using Tscheme::short_range_function_second_derivative;
+    using Tscheme::short_range_function_third_derivative;
 
     template <class... Args> PairPotential(Args &&... args) : Tscheme(args...) {
       invcutoff = 1.0 / cutoff;
@@ -180,7 +180,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
     inline double ion_potential(double z, double r) {
         if ( r < cutoff ) {
             double q = r * invcutoff;
-            return z / r * splitting_function(q);
+            return z / r * short_range_function(q);
         } else {
             return 0.0;
         }
@@ -203,7 +203,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
         if ( r2 < cutoff2 ) {
             double r1 = std::sqrt(r2);
             double q = r1 * invcutoff;
-            return mu.dot(r) / r2 / r1  * ( splitting_function(q) - q * splitting_function_derivative(q) );
+            return mu.dot(r) / r2 / r1  * ( short_range_function(q) - q * short_range_function_derivative(q) );
         } else {
             return 0.0;
         }
@@ -226,7 +226,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
         if ( r2 < cutoff2 ) {
             double r1 = std::sqrt(r2);
             double q = r1 * invcutoff;
-            return z * r / r2 / r1 * ( splitting_function(q) - q * splitting_function_derivative(q) );
+            return z * r / r2 / r1 * ( short_range_function(q) - q * short_range_function_derivative(q) );
         } else {
             return {0,0,0};
         }
@@ -250,8 +250,8 @@ template <class Tscheme> class PairPotential : public Tscheme {
         if ( r2 < cutoff2 ) {
             double r1 = std::sqrt(r2);
             double q = r1 * invcutoff;
-            double second_derivative_scaled = q * q / 3.0 * splitting_function_second_derivative(q);
-            Point field = ( 3.0 * mu.dot(r) * r / r2 - mu ) / r2 / r1 * ( splitting_function(q) - q * splitting_function_derivative(q) + second_derivative_scaled );
+            double second_derivative_scaled = q * q / 3.0 * short_range_function_second_derivative(q);
+            Point field = ( 3.0 * mu.dot(r) * r / r2 - mu ) / r2 / r1 * ( short_range_function(q) - q * short_range_function_derivative(q) + second_derivative_scaled );
             field += mu / r2 / r1 * second_derivative_scaled;
             return field;
         } else {
@@ -335,9 +335,9 @@ template <class Tscheme> class PairPotential : public Tscheme {
             double muAdotRh = muA.dot(rh);
             double muBdotRh = muB.dot(rh);
             Point force = 3.0 * ( ( 5.0 * muAdotRh*muBdotRh - muA.dot(muB) ) * rh - muBdotRh * muA - muAdotRh * muB  ) / r4;
-            double second_derivative = splitting_function_second_derivative(q);
-            force *= ( splitting_function(q) - q * splitting_function_derivative(q) + q * q / 3.0 * second_derivative );
-            force += muAdotRh * muBdotRh * rh / r4 *( second_derivative - q * splitting_function_third_derivative(q) ) * q * q;
+            double second_derivative = short_range_function_second_derivative(q);
+            force *= ( short_range_function(q) - q * short_range_function_derivative(q) + q * q / 3.0 * second_derivative );
+            force += muAdotRh * muBdotRh * rh / r4 *( second_derivative - q * short_range_function_third_derivative(q) ) * q * q;
             return force;
         } else {
             return {0,0,0};
@@ -379,9 +379,10 @@ template <class Tscheme> class PairPotential : public Tscheme {
 struct Plain : public SchemeBase {
     inline Plain() : SchemeBase(TruncationScheme::plain, infty){
         name = "plain";
+	doi = "Premier mémoire sur l’électricité et le magnétisme by Charles-Augustin de Coulomb"; // :P
         self_energy_prefactor = {0.0, 0.0};
     };
-    inline double splitting_function(double q) const override { return 1.0; };
+    inline double short_range_function(double q) const override { return 1.0; };
     inline double calc_dielectric(double M2V) const override { return (2 * M2V + 1) / (1 - M2V); }
 #ifdef NLOHMANN_JSON_HPP
   private:
@@ -405,10 +406,10 @@ TEST_CASE("[CoulombGalore] plain") {
     PairPotential<Plain> pot;
 
     // Test short-ranged function
-    CHECK(pot.splitting_function(0.5) == Approx(1.0));
-    CHECK(pot.splitting_function_derivative(0.5) == Approx(0.0));
-    CHECK(pot.splitting_function_second_derivative(0.5) == Approx(0.0));
-    CHECK(pot.splitting_function_third_derivative(0.5) == Approx(0.0));
+    CHECK(pot.short_range_function(0.5) == Approx(1.0));
+    CHECK(pot.short_range_function_derivative(0.5) == Approx(0.0));
+    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(0.0));
+    CHECK(pot.short_range_function_third_derivative(0.5) == Approx(0.0));
 
     // Test potentials
     CHECK(pot.ion_potential(zA, cutoff + 1.0) == Approx(0.06666666667 ));
@@ -514,9 +515,9 @@ struct qPotential : public SchemeBase {
         self_energy_prefactor = {-1.0, -1.0};
     }
 
-    inline double splitting_function(double q) const override { return qPochhammerSymbol(q, 0, order); }
-    inline double splitting_function_derivative(double q) const { return qPochhammerSymbolDerivative(q, 0, order); }
-    inline double splitting_function_second_derivative(double q) const { return qPochhammerSymbolSecondDerivative(q, 0, order); }
+    inline double short_range_function(double q) const override { return qPochhammerSymbol(q, 0, order); }
+    inline double short_range_function_derivative(double q) const { return qPochhammerSymbolDerivative(q, 0, order); }
+    inline double short_range_function_second_derivative(double q) const { return qPochhammerSymbolSecondDerivative(q, 0, order); }
     inline double calc_dielectric(double M2V) const override { return 1 + 3 * M2V; }
 
 #ifdef NLOHMANN_JSON_HPP
@@ -541,8 +542,8 @@ TEST_CASE("[CoulombGalore] qPotential") {
     PairPotential<qPotential> pot(cutoff,4);
 
     // Test short-ranged function
-    CHECK(pot.splitting_function(0.5) == Approx(0.3076171875));
-    CHECK(pot.splitting_function_derivative(0.5) == Approx(-1.453125));
+    CHECK(pot.short_range_function(0.5) == Approx(0.3076171875));
+    CHECK(pot.short_range_function_derivative(0.5) == Approx(-1.453125));
 }
 
 #endif
@@ -551,6 +552,7 @@ TEST_CASE("[CoulombGalore] qPotential") {
 
 /**
  * @brief Poisson approximation
+ * @note By using the parameters 'C=4' and 'D=3' this equals the 'Fanourgakis' approach
  */
 struct Poisson : public SchemeBase {
     unsigned int C;
@@ -560,10 +562,12 @@ struct Poisson : public SchemeBase {
         : SchemeBase(TruncationScheme::poisson, cutoff), C(C), D(D) {
         if ((C < 1) or (D < 1))
             throw std::runtime_error("`C` and `D` must be larger than zero");
+        name = "poisson";
+        doi = "10.1088/1367-2630/ab1ec1";
         double a1 = -double(C + D) / double(C);
         self_energy_prefactor = {a1, a1};
     }
-    inline double splitting_function(double q) const override {
+    inline double short_range_function(double q) const override {
         double tmp = 0;
         for (unsigned int c = 0; c < C; c++)
             tmp += double(factorial(D - 1 + c)) / double(factorial(D - 1)) / double(factorial(c)) * double(C - c) /
@@ -589,7 +593,8 @@ TEST_CASE("[CoulombGalore] Poisson") {}
 // -------------- Fanourgakis ---------------
 
 /**
- * @brief Fanourgakis scheme
+ * @brief Fanourgakis scheme.
+ * @note This is the same as using the 'Poisson' approach with parameters 'C=4' and 'D=3'
  */
 struct Fanourgakis : public SchemeBase {
     /**
@@ -597,13 +602,14 @@ struct Fanourgakis : public SchemeBase {
      */
     inline Fanourgakis(double cutoff) : SchemeBase(TruncationScheme::qpotential, cutoff) {
         name = "fanourgakis";
+        doi = "10.1063/1.3216520";
         self_energy_prefactor = {-1.0, -1.0};
     }
 
-    inline double splitting_function(double q) const override { return pow(1.0 - q,4.0) * ( 1.0 + 2.25 * q + 3.0 * q*q + 2.5 * q*q*q ); }
-    inline double splitting_function_derivative(double q) const { return ( -1.75 + 26.25 * pow(q,4.0) - 42.0 * pow(q,5.0) + 17.5 * pow(q,6.0) ); }
-    inline double splitting_function_second_derivative(double q) const { return 105.0 * pow(q,3.0) * pow(q - 1.0, 2); };
-    inline double splitting_function_third_derivative(double q) const { return 525.0 * pow(q,2.0) * (q - 0.6) * ( q - 1.0); };
+    inline double short_range_function(double q) const override { return pow(1.0 - q,4.0) * ( 1.0 + 2.25 * q + 3.0 * q*q + 2.5 * q*q*q ); }
+    inline double short_range_function_derivative(double q) const { return ( -1.75 + 26.25 * pow(q,4.0) - 42.0 * pow(q,5.0) + 17.5 * pow(q,6.0) ); }
+    inline double short_range_function_second_derivative(double q) const { return 105.0 * pow(q,3.0) * pow(q - 1.0, 2); };
+    inline double short_range_function_third_derivative(double q) const { return 525.0 * pow(q,2.0) * (q - 0.6) * ( q - 1.0); };
     inline double calc_dielectric(double M2V) const override { return 1 + 3 * M2V; }
 
 #ifdef NLOHMANN_JSON_HPP
@@ -627,10 +633,10 @@ TEST_CASE("[CoulombGalore] Fanourgakis") {
     PairPotential<Fanourgakis> pot(cutoff);
 
     // Test short-ranged function
-    CHECK(pot.splitting_function(0.5) == Approx(0.1992187500));
-    CHECK(pot.splitting_function_derivative(0.5) == Approx(-1.1484375));
-    CHECK(pot.splitting_function_second_derivative(0.5) == Approx(3.28125));
-    CHECK(pot.splitting_function_third_derivative(0.5) == Approx(6.5625));
+    CHECK(pot.short_range_function(0.5) == Approx(0.1992187500));
+    CHECK(pot.short_range_function_derivative(0.5) == Approx(-1.1484375));
+    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.28125));
+    CHECK(pot.short_range_function_third_derivative(0.5) == Approx(6.5625));
 
     // Test potentials
     CHECK(pot.ion_potential(zA, cutoff) == Approx(0.0));
