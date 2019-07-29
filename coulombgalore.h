@@ -27,67 +27,94 @@ TEST_CASE("[Faunus] Factorial") {
 #endif
 
 /**
- * @brief Help-function for the q-potential
+ * @brief Help-function for the q-potential scheme
+ * @returns q-Pochhammer Symbol
+ * @param q Normalized distance, q = r / Rcutoff
+ * @param l Type of base interaction, l=0 is ion-ion, l=1 is ion-dipole, l=2 is dipole-dipole etc.
+ * @param P Number of higher order moments to cancel
+ *
+ * @details The parameters are explaind in term of electrostatic moment cancellation as used in the q-potential scheme.
+ * @f[
+ *     (a;q)_P = \prod_{n=1}^P(1-aq^{n-1})
+ * @f]
+ * where @f[ a=q^l @f].
  *
  * More information here: http://mathworld.wolfram.com/q-PochhammerSymbol.html
- * P = 300 gives an error of about 10^-17 for k < 4
+ *
+ * P = 300 gives an error of about 10^-17 for k < 4.
  */
 inline double qPochhammerSymbol(double q, int l = 0, int P = 300) {
-    double value = 1.0;
+    double qPS = 1.0;
     double qln = std::pow(q, l+1); // a * q^{n-1} = q^{l+n}
     for (int n = 1; n < P + 1; n++) {
-        value *= ( 1.0 - qln );
+        qPS *= ( 1.0 - qln );
         qln *= q;
     }
-    return value;
+    return qPS;
 }
 
+/**
+ * @brief Gives the derivative of the q-Pochhammer Symbol
+ */
 inline double qPochhammerSymbolDerivative(double q, int l = 0, int P = 300) {
-    double value = 0.0;
+    double qPS = 1.0;  // will evaluate to q-Pochhammer Symbol
+    double dqPS = 0.0; // will evaluate to derivative of the q-Pochhammer Symbol
     double qln = std::pow(q, l+1); // a * q^{n-1} = q^{l+n}
     for (int n = 1; n < P + 1; n++) {
-        value -= ( l + n ) * qln / ( 1.0 - qln );
+        qPS *= ( 1.0 - qln );
+        dqPS -= ( l + n ) * qln / ( 1.0 - qln );
         qln *= q;
     }
-    return value / q * qPochhammerSymbol(q,l,P);
+    dqPS = dqPS / q * qPS;
+    return dqPS;
 }
 
+/**
+ * @brief Gives the second derivative of the q-Pochhammer Symbol
+ */
 inline double qPochhammerSymbolSecondDerivative(double q, int l = 0, int P = 300) {
-    double value = 0.0;
+    double qPS = 1.0;   // will evaluate to q-Pochhammer Symbol
+    double dqPS = 0.0;  // will evaluate to derivative of the q-Pochhammer Symbol
+    double ddqPS = 0.0; // will evaluate to the second derivative of the q-Pochhammer Symbol
     double qln = std::pow(q, l+1); // a * q^{n-1} = q^{l+n}
     for (int n = 1; n < P + 1; n++) {
-        value -= ( qln + l + n - 1.0 ) * ( l + n ) * qln / ( 1.0 - qln ) / ( 1.0 - qln );
+        qPS *= ( 1.0 - qln );
+        dqPS -= ( l + n ) * qln / ( 1.0 - qln );
+        ddqPS -= ( qln + l + n - 1.0 ) * ( l + n ) * qln / ( 1.0 - qln ) / ( 1.0 - qln );
         qln *= q;
     }
-    value /= ( q * q );
-    double qPS = qPochhammerSymbol(q,l,P);
-    double dqPS = qPochhammerSymbolDerivative(q,l,P);
-    return ( value * qPS + dqPS * dqPS / qPS );
+    ddqPS /= ( q * q );
+    dqPS = dqPS / q * qPS;
+    ddqPS = ( ddqPS * qPS + dqPS * dqPS / qPS );
+    return ddqPS;
 }
 
+/**
+ * @brief Gives the third derivative of the q-Pochhammer Symbol
+ */
 inline double qPochhammerSymbolThirdDerivative(double q, int l = 0, int P = 300) {
-    double S1 = 0.0;
-    double S2 = 0.0;
-    double S3 = 0.0;
+    double qPS = 1.0;    // will evaluate to q-Pochhammer Symbol
+    double dqPS = 0.0;   // will evaluate to derivative of the q-Pochhammer Symbol
+    double ddqPS = 0.0;  // will evaluate to the second derivative of the q-Pochhammer Symbol
+    double dddqPS = 0.0; // will evaluate to the third derivative of the q-Pochhammer Symbol
     double qln = std::pow(q, l+1); // a * q^{n-1} = q^{l+n}
+    double tmp1 = 0.0;
+    double tmp2 = 0.0;
     for (int n = 1; n < P + 1; n++) {
-	double tmp = ( l + n ) / ( 1 - qln );
-	S1 -= tmp * qln;
-	S2 += tmp * tmp * qln;
-	S3 += tmp * tmp * tmp * qln * (1.0 + qln);
+      double tmp = ( l + n ) / ( 1 - qln );
+        qPS *= ( 1.0 - qln );
+        dqPS -= tmp * qln;
+        ddqPS -= ( qln + l + n - 1.0 ) * tmp * qln / ( 1.0 - qln );
+        tmp1 += tmp * tmp * qln;
+        tmp2 += tmp * tmp * tmp * qln * (1.0 + qln);
         qln *= q;
     }
-
-    double dS1 = -1.0 / q * S2;
-    double ddS1 = 1.0 / q / q *( S2 - S3 );
-
-    double qPS = qPochhammerSymbol(q,l,P);
-    double dqPS = qPochhammerSymbolDerivative(q,l,P);
-    double ddqPS = qPochhammerSymbolSecondDerivative(q,l,P);
-
-    double ans = 3.0*ddqPS*dqPS / qPS / qPS - 2.0*pow(dqPS/qPS,3.0) + ddS1/q - 2.0*dS1 / q / q + 2.0*S1 / q / q / q;
-    ans = ans * qPS;
-    return ans;
+    double tmp3 = 2.0 / q / q / q * tmp1;
+    double tmp4 = 1.0 / q / q / q *( tmp1 - tmp2 );
+    dqPS = dqPS / q * qPS;
+    ddqPS = ( ddqPS * qPS / q / q + dqPS * dqPS / qPS );
+    dddqPS = ( 3.0*ddqPS*dqPS / qPS - 2.0*pow(dqPS/qPS,3.0) * qPS + tmp4 * qPS + tmp3 * qPS + 2.0*dqPS / q / q );
+    return dddqPS;
 }
 
 #ifdef DOCTEST_LIBRARY_INCLUDED
@@ -135,9 +162,8 @@ class SchemeBase {
     inline SchemeBase(TruncationScheme scheme, double cutoff) : scheme(scheme), cutoff(cutoff) {}
 
     /**
-     * @brief Splitting function
-     * @param q q=r/Rcutoff
-     * @todo How should this be expanded to higher order moments?
+     * @brief Short-range function
+     * @param q q = r / Rcutoff
      */
     virtual double short_range_function(double) const = 0;
 
@@ -155,7 +181,16 @@ class SchemeBase {
 
     /**
      * @brief Calculate dielectric constant
-     * @param M2V system dipole moment fluctuation
+     * @param M2V see details
+     *
+     * @details The paramter @f[ M2V @f] is described by
+     * @f[
+     *     M2V = \frac{\langle M^2\rangle}{ 3\varepsilon_0Vk_BT }
+     * @f]
+     *
+     * where @f[ \langle M^2\rangle @f] is mean value of the system dipole moment squared,
+     * @f[ \varepsilon_0 @f] is the vacuum permittivity, @f[ V @f] the volume of the system,
+     * @f[ k_B @f] the Boltzmann constant, and @f[ T @f] the temperature.
      */
     virtual double calc_dielectric(double) const = 0;
 
@@ -206,16 +241,15 @@ template <class Tscheme> class PairPotential : public Tscheme {
     }
 
     /**
-     * @brief ion potential
+     * @brief potential from ion
      * @returns potential from ion in electrostatic units ( why not Hartree atomic units? )
      * @param z charge
-     * @param r charge separation
+     * @param r distance from charge
      *
      * @details The potential from a charge is described by
      * @f[
-     *     \Phi({\bf r},z) = \frac{z}{|{\bf r}|}s(q)
+     *     \Phi(z,r) = \frac{z}{r}s(q)
      * @f]
-     *
      */
     inline double ion_potential(double z, double r) {
         if ( r < cutoff ) {
@@ -227,16 +261,15 @@ template <class Tscheme> class PairPotential : public Tscheme {
     }
 
     /**
-     * @brief dipole potential
+     * @brief potential from dipole
      * @returns potential from dipole in electrostatic units ( why not Hartree atomic units? )
      * @param mu dipole
      * @param r distance-vector from dipole
      *
      * @details The potential from a charge is described by
      * @f[
-     *     \Phi({\bf r},{\bf \mu}) = \frac{{\bf \mu} \cdot \hat{{\bf r}} }{|{\bf r}|^2} \left( s(q) - qs^{\prime}(q) \right)
+     *     \Phi(\boldsymbol{\mu}, {\bf r}) = \frac{\boldsymbol{\mu} \cdot \hat{{\bf r}} }{|{\bf r}|^2} \left( s(q) - qs^{\prime}(q) \right)
      * @f]
-     *
      */
     inline double dipole_potential(Point mu, Point r) {
         double r2 = r.squaredNorm();
@@ -253,13 +286,12 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @brief field from ion
      * @returns field in electrostatic units ( why not Hartree atomic units? )
      * @param z charge
-     * @param r distance-vector to charge
+     * @param r distance-vector from charge
      *
      * @details The field from a charge is described by
      * @f[
-     *     {\bf E}({\bf r},z) = -\nabla \Phi({\bf r},z) = \frac{z \hat{{\bf r}} }{|{\bf r}|^2} \left( s(q) - qs^{\prime}(q) \right)
+     *     {\bf E}(z, {\bf r}) = \frac{z \hat{{\bf r}} }{|{\bf r}|^2} \left( s(q) - qs^{\prime}(q) \right)
      * @f]
-     *
      */
     inline Point ion_field(double z, Point r) {
         double r2 = r.squaredNorm();
@@ -276,13 +308,12 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @brief field from dipole
      * @returns field in electrostatic units ( why not Hartree atomic units? )
      * @param mu dipole
-     * @param r distance-vector
+     * @param r distance-vector from dipole
      *
      * @details The field from a dipole is described by
      * @f[
-     *     {\bf E}({\bf r},{\bf \mu}) = -\nabla \Phi({\bf r},{\bf \mu}) = \frac{3 ( {\bf \mu} \cdot \hat{{\bf r}} ) \hat{{\bf r}} - \hat{{\bf \mu}} }{|{\bf r}|^3}
+     *     {\bf E}(\boldsymbol{\mu}, {\bf r}) = \frac{3 ( \boldsymbol{\mu} \cdot \hat{{\bf r}} ) \hat{{\bf r}} - \boldsymbol{\mu} }{|{\bf r}|^3} \left( s(q) - qs^{\prime}(q)  + \frac{q^2}{3}s^{\prime\prime}(q) \right) + \frac{\boldsymbol{\mu}}{|{\bf r}|^3}\frac{q^2}{3}s^{\prime\prime}(q)
      * @f]
-     *
      */
     inline Point dipole_field(Point mu, Point r) {
         double r2 = r.squaredNorm();
@@ -299,23 +330,39 @@ template <class Tscheme> class PairPotential : public Tscheme {
     }
 
     /**
-     * @brief ion-ion interaction energy
+     * @brief interaction energy between two ions
      * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
      * @param zA charge
      * @param zB charge
      * @param r charge separation
+     *
+     * @details The interaction energy between two charges is decribed by
+     * @f[
+     *     u(z_A, z_B, r) = z_B \Phi(z_A,r)
+     * @f]
+     * where @f[ \Phi(z_A,r) @f] is the potential from ion A.
      */
     inline double ion_ion_energy(double zA, double zB, double r) {
         return zB * ion_potential(zA,r);
     }
 
     /**
-     * @brief ion-dipole interaction energy
+     * @brief interaction energy between an ion and a dipole
      * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
      * @param z charge
      * @param mu dipole moment
-     * @param r distance-vector between dipole and charge, mu - z
-     * @note the direction of r is from charge towards dipole
+     * @param r distance-vector between dipole and charge, @f[ {\bf r} = {\bf r}_{\mu} - {\bf r}_z @f]
+     *
+     * @details The interaction energy between an ion and a dipole is decribed by
+     * @f[
+     *     u(z, \boldsymbol{\mu}, {\bf r}) = z \Phi(\boldsymbol{\mu}, -{\bf r})
+     * @f]
+     * where @f[ \Phi(\boldsymbol{\mu}, -{\bf r}) @f] is the potential from the dipole at the location of the ion.
+     * This interaction can also be described by
+     * @f[
+     *     u(z, \boldsymbol{\mu}, {\bf r}) = -\boldsymbol{\mu}\cdot {\bf E}(z, {\bf r})
+     * @f]
+     * where @f[ {\bf E}(z, {\bf r}) @f] is the field from the ion at the location of the dipole.
      */
     inline double ion_dipole_energy(double z, Point mu, Point r) {
         // Both expressions below gives same answer. Keep for possible optimization in future.
@@ -324,11 +371,17 @@ template <class Tscheme> class PairPotential : public Tscheme {
     }
 
     /**
-     * @brief dipole-dipole interaction energy
+     * @brief interaction energy between two dipoles
      * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
      * @param muA dipole moment of particle A
      * @param muB dipole moment of particle B
-     * @param r distance-vector between dipoles
+     * @param r distance-vector between dipoles, @f[ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f]
+     *
+     * @details The interaction energy between two dipoles is decribed by
+     * @f[
+     *     u(\boldsymbol{\mu}_A, \boldsymbol{\mu}_B, {\bf r}) = -\boldsymbol{\mu}_A\cdot {\bf E}(\boldsymbol{\mu}_B, {\bf r})
+     * @f]
+     * where @f[ {\bf E}(\boldsymbol{\mu}_B, {\bf r}) @f] is the field from dipole B at the location of dipole A.
      */
     inline double dipole_dipole_energy(Point muA, Point muB, Point r) {
         return -muA.dot(dipole_field(muB,r));
@@ -339,7 +392,13 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @returns interaction force in electrostatic units ( why not Hartree atomic units? )
      * @param zA charge
      * @param zB charge
-     * @param r distance-vector between charges
+     * @param r distance-vector between charges, @f[ {\bf r} = {\bf r}_{z_B} - {\bf r}_{z_A} @f]
+     *
+     * @details The force between two ions is decribed by
+     * @f[
+     *     {\bf F}(z_A, z_B, {\bf r}) = z_B {\bf E}(z_A, {\bf r})
+     * @f]
+     * where @f[ {\bf E}(z_A, {\bf r}) @f] is the field from ion A at the location of ion B.
      */
     inline Point ion_ion_force(double zA, double zB, Point r) {
         return zB * ion_field(zA,r);
@@ -350,7 +409,13 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @returns interaction force in electrostatic units ( why not Hartree atomic units? )
      * @param z charge
      * @param mu dipole moment
-     * @param r distance-vector between dipole and charge, mu - z
+     * @param r distance-vector between dipole and charge, @f[ {\bf r} = {\bf r}_{\mu} - {\bf r}_z @f]
+     *
+     * @details The force between an ion and a dipole is decribed by
+     * @f[
+     *     {\bf F}(z, \boldsymbol{\mu}, {\bf r}) = z {\bf E}(\boldsymbol{\mu}, {\bf r})
+     * @f]
+     * where @f[ {\bf E}({\bf \mu}, {\bf r}) @f] is the field from the dipole at the location of the ion.
      */
     inline Point ion_dipole_force(double z, Point mu, Point r) {
         return z * dipole_field(mu,r);
@@ -361,8 +426,20 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
      * @param muA dipole moment of particle A
      * @param muB dipole moment of particle B
-     * @param r distance-vector between dipoles
-     * @note not finished
+     * @param r distance-vector between dipoles, @f[ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f]
+     *
+     * @details The force between two dipoles is decribed by
+     * @f[
+     *     {\bf F}(\boldsymbol{\mu}_A, \boldsymbol{\mu}_B, {\bf r}) = {\bf F}_D(\boldsymbol{\mu}_A, \boldsymbol{\mu}_B, {\bf r})\left( s(q) - qs^{\prime}(q)  + \frac{q^2}{3}s^{\prime\prime}(q) \right) + {\bf F}_I(\boldsymbol{\mu}_A, \boldsymbol{\mu}_B, {\bf r})\left( s^{\prime\prime}(q)  - qs^{\prime\prime\prime}(q) \right)q^2
+     * @f]
+     * where the 'direct' (D) force contribution is
+     * @f[
+     *     {\bf F}_D(\boldsymbol{\mu}_A, \boldsymbol{\mu}_B, {\bf r}) = 3\frac{ 5 (\boldsymbol{\mu}_A \cdot {\bf \hat{r}}) (\boldsymbol{\mu}_B \cdot {\bf \hat{r}}){\bf \hat{r}} - (\boldsymbol{\mu}_A \cdot \boldsymbol{\mu}_B){\bf \hat{r}} - (\boldsymbol{\mu}_A \cdot {\bf \hat{r}})\boldsymbol{\mu}_B - (\boldsymbol{\mu}_B \cdot {\bf \hat{r}})\boldsymbol{\mu}_A }{|{\bf r}|^4}
+     * @f]
+     * and the 'indirect' (I) force contribution is
+     * @f[
+     *     {\bf F}_I(\boldsymbol{\mu}_A, \boldsymbol{\mu}_B, {\bf r}) = \frac{ (\boldsymbol{\mu}_A \cdot {\bf \hat{r}}) (\boldsymbol{\mu}_B \cdot {\bf \hat{r}}){\bf \hat{r}}}{|{\bf r}|^4}.
+     * @f]
      */
     inline Point dipole_dipole_force(Point muA, Point muB, Point r) {
         double r2 = r.squaredNorm();
@@ -386,8 +463,13 @@ template <class Tscheme> class PairPotential : public Tscheme {
     /**
      * @brief torque exerted on dipole
      * @returns torque on dipole in electrostatic units ( why not Hartree atomic units? )
-     * @param muA dipole moment
+     * @param mu dipole moment
      * @param E field
+     *
+     * @details The torque on a dipole in a field is described by
+     * @f[
+     *     \boldsymbol{\tau} = \boldsymbol{\mu} \times \boldsymbol{E}
+     * @f]
      */
     inline Point dipole_torque(Point mu, Point E) {
         return mu.cross(E);
@@ -395,9 +477,15 @@ template <class Tscheme> class PairPotential : public Tscheme {
 
     /**
      * @brief self-energy for all type of interactions
-     * @param zz charge product
      * @returns self energy in electrostatic units ( why not Hartree atomic units? )
-     * @param mumu product between dipole moment scalars
+     * @param m2 vector with square moments, \textit{i.e.} charge squared, dipole moment squared, etc.
+     *
+     * @details The torque on a dipole in a field is described by
+     * @f[
+     *     u_{self} = p_1 \frac{z^2}{R_c} + p_2 \frac{|\boldsymbol{\mu}|^2}{R_c^3} + \cdots
+     * @f]
+     * where @f[ p_i @f] is the prefactor for the self-energy for species 'i'.
+     * Here i=0 represent ions, i=1 represent dipoles etc.
      */
     inline double self_energy(std::array<double,2> m2) const {
       if( self_energy_prefactor.size() != m2.size() )
@@ -498,41 +586,125 @@ TEST_CASE("[CoulombGalore] plain") {
     CHECK(F_dipoledipole[2] == Approx(-0.002551448858));
 
     // Approximate dipoles by two charges respectively and compare to point-dipoles
-    double d = 1e-5; // small distance
+    double d = 1e-3; // small distance
 
-    Point muA_r1 = muA / muA.norm() * d;     // a small distance from the origin
-    Point muA_r2 = - muA / muA.norm() * d;   // a small distance from the origin
+    Point r_muA_1 = muA / muA.norm() * d;     // a small distance from dipole A ( the origin )
+    Point r_muA_2 = - muA / muA.norm() * d;   // a small distance from dipole B ( the origin )
+    Point r_muB_1 = r + muB / muB.norm() * d; // a small distance from dipole B ( 'r' )
+    Point r_muB_2 = r - muB / muB.norm() * d; // a small distance from dipole B ( 'r' )
+    double z_muA_1 =  muA.norm() / ( 2.0 * d ); // charge 1 of approximative dipole A
+    double z_muA_2 = -muA.norm() / ( 2.0 * d ); // charge 2 of approximative dipole A
+    double z_muB_1 =  muB.norm() / ( 2.0 * d ); // charge 1 of approximative dipole B
+    double z_muB_2 = -muB.norm() / ( 2.0 * d ); // charge 2 of approximative dipole B
 
-    Point muB_r1 = r + muB / muB.norm() * d; // a small distance from 'r'
-    Point muB_r2 = r - muB / muB.norm() * d; // a small distance from 'r'
+    Point muA_approx = r_muA_1 * z_muA_1 + r_muA_2 * z_muA_2;
+    Point muB_approx = r_muB_1 * z_muB_1 + r_muB_2 * z_muB_2;
 
-    double muA_z1 =  muA.norm() / ( 2.0 * d ); // charge 1 of approximative dipole A
-    double muA_z2 = -muA.norm() / ( 2.0 * d ); // charge 2 of approximative dipole A
+    Point r_z1r = r - r_muA_1; // distance from charge 1 of dipole A to 'r'
+    Point r_z2r = r - r_muA_2; // distance from charge 2 of dipole A to 'r'
 
-    double muB_z1 =  muB.norm() / ( 2.0 * d ); // charge 1 of approximative dipole B
-    double muB_z2 = -muB.norm() / ( 2.0 * d ); // charge 2 of approximative dipole B
-
-    Point muA_approx = muA_r1 * muA_z1 + muA_r2 * muA_z2;
-    Point muB_approx = muB_r1 * muB_z1 + muB_r2 * muB_z2;
-
+    // Check that dipole moment of the two charges corresponds to that from the dipole
     CHECK(muA[0] == Approx(muA_approx[0]));
     CHECK(muA[1] == Approx(muA_approx[1]));
     CHECK(muA[2] == Approx(muA_approx[2]));
-
     CHECK(muB[0] == Approx(muB_approx[0]));
     CHECK(muB[1] == Approx(muB_approx[1]));
     CHECK(muB[2] == Approx(muB_approx[2]));
 
-    Point F_ionion_11 = pot.ion_ion_force(muA_z1, muB_z1, muA_r1 - muB_r1);
-    Point F_ionion_12 = pot.ion_ion_force(muA_z1, muB_z2, muA_r1 - muB_r2);
-    Point F_ionion_21 = pot.ion_ion_force(muA_z2, muB_z1, muA_r2 - muB_r1);
-    Point F_ionion_22 = pot.ion_ion_force(muA_z2, muB_z2, muA_r2 - muB_r2);
+    // Check potentials
+    double potA = pot.dipole_potential(muA, r);
+    double potA_1 = pot.ion_potential(z_muA_1, r_z1r.norm());
+    double potA_2 = pot.ion_potential(z_muA_2, r_z2r.norm());
+    CHECK(potA == Approx(potA_1 + potA_2));
 
+    // Check fields
+    Point fieldA = pot.dipole_field(muA, r);
+    Point fieldA_1 = pot.ion_field(z_muA_1, r_z1r);
+    Point fieldA_2 = pot.ion_field(z_muA_2, r_z2r);
+    CHECK(fieldA[0] == Approx(fieldA_1[0] + fieldA_2[0]));
+    CHECK(fieldA[1] == Approx(fieldA_1[1] + fieldA_2[1]));
+    CHECK(fieldA[2] == Approx(fieldA_1[2] + fieldA_2[2]));
+
+    // Check energies
+    double EA = pot.ion_dipole_energy(zB, muA, -r);
+    double EA_1 = pot.ion_ion_energy(zB, z_muA_1, r_z1r.norm());
+    double EA_2 = pot.ion_ion_energy(zB, z_muA_2, r_z2r.norm());
+    CHECK(EA == Approx(EA_1 + EA_2));
+
+    // Check forces
+    Point F_ionion_11 = pot.ion_ion_force(z_muA_1, z_muB_1, r_muA_1 - r_muB_1);
+    Point F_ionion_12 = pot.ion_ion_force(z_muA_1, z_muB_2, r_muA_1 - r_muB_2);
+    Point F_ionion_21 = pot.ion_ion_force(z_muA_2, z_muB_1, r_muA_2 - r_muB_1);
+    Point F_ionion_22 = pot.ion_ion_force(z_muA_2, z_muB_2, r_muA_2 - r_muB_2);
     Point F_dipoledipole_approx = F_ionion_11 + F_ionion_12 + F_ionion_21 + F_ionion_22;
-
     CHECK(F_dipoledipole[0] == Approx(F_dipoledipole_approx[0]));
     CHECK(F_dipoledipole[1] == Approx(F_dipoledipole_approx[1]));
     CHECK(F_dipoledipole[2] == Approx(F_dipoledipole_approx[2]));
+}
+
+#endif
+
+// -------------- Ewald real-space ---------------
+
+/**
+ * @brief Ewald real-space scheme
+ */
+struct Ewald : public SchemeBase {
+    double alpha;               //!< Damping-parameter
+    double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
+    double epsSur;              //!< Dielectric constant of the surrounding medium
+    const double pi = std::atan(1.0)*4.0;
+    const double pi_sqrt = std::sqrt(pi);
+
+    /**
+     * @param cutoff distance cutoff
+     * @param alpha damping-parameter
+     */
+    inline Ewald(double cutoff, double alpha, double epsSur) : SchemeBase(TruncationScheme::ewald, cutoff), alpha(alpha), epsSur(epsSur) {
+        name = "Ewald real-space";
+        alphaRed = alpha*cutoff;
+        alphaRed2 = alphaRed * alphaRed;
+        self_energy_prefactor = { - alphaRed / pi_sqrt, -pow(alphaRed,3) * 2.0 / 3.0 / pi_sqrt };
+    }
+
+    inline double short_range_function(double q) const override { return std::erfc(alphaRed*q); }
+    inline double short_range_function_derivative(double q) const { return -2.0 * std::exp( - alphaRed2 * q * q ) * alphaRed / pi_sqrt; }
+    inline double short_range_function_second_derivative(double q) const { return 4.0 * std::exp( - alphaRed2 * q * q ) * alphaRed2 * alphaRed * q / pi_sqrt; }
+    inline double short_range_function_third_derivative(double q) const { return -8.0 * std::exp( - alphaRed2 * q * q ) * alphaRed2 * alphaRed * ( alphaRed2 * q * q - 0.5 ) / pi_sqrt; }
+    inline double calc_dielectric(double M2V) const override {
+      if(epsSur == infty) // conducting boundaries
+        return ( 1.0 + 3.0 * M2V );
+      if( std::fabs( epsSur - 1.0 ) < 1e-6 ) // vacuum boundaries
+        return ( 2.0 * M2V + 1.0 ) / ( 1.0 - M2V );
+      return ( 6.0 * M2V * epsSur + 2.0 * epsSur + 1.0 ) / ( 1.0 - 3.0 * M2V + 2.0 * epsSur ); // insulating boundaries
+    }
+
+#ifdef NLOHMANN_JSON_HPP
+  private:
+    inline void _from_json(const nlohmann::json &j) override { alpha = j.at("alpha").get<int>(); }
+    inline void _to_json(nlohmann::json &j) const override { j = {{"alpha", alpha}}; }
+#endif
+};
+
+#ifdef DOCTEST_LIBRARY_INCLUDED
+
+TEST_CASE("[CoulombGalore] Ewald real-space") {
+    using doctest::Approx;
+    double cutoff = 29.0;  // cutoff distance
+    double zA = 2.0; // charge
+    double zB = 3.0; // charge
+    Point muA = {19, 7, 11};  // dipole moment
+    Point muB = {13, 17, 5};  // dipole moment
+    Point r = {23, 0, 0};  // distance vector
+    Point rh = {1, 0, 0};  // normalized distance vector
+
+    PairPotential<Ewald> pot(cutoff,0.1,infty);
+
+    // Test short-ranged function
+    CHECK(pot.short_range_function(0.5) == Approx(0.04030497436));
+    CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.399713585));
+    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.36159125));
+    CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
 }
 
 #endif
@@ -726,43 +898,6 @@ TEST_CASE("[CoulombGalore] Fanourgakis") {
     CHECK(F_dipoledipole[0] == Approx(0.009216400961));
     CHECK(F_dipoledipole[1] == Approx(-0.002797126801));
     CHECK(F_dipoledipole[2] == Approx(-0.001608010094));
-
-    // Approximate dipoles by two charges respectively and compare to point-dipoles
-    double d = 1e-5; // small distance
-
-    Point muA_r1 = muA / muA.norm() * d;     // a small distance from the origin
-    Point muA_r2 = - muA / muA.norm() * d;   // a small distance from the origin
-
-    Point muB_r1 = r + muB / muB.norm() * d; // a small distance from 'r'
-    Point muB_r2 = r - muB / muB.norm() * d; // a small distance from 'r'
-
-    double muA_z1 =  muA.norm() / ( 2.0 * d ); // charge 1 of approximative dipole A
-    double muA_z2 = -muA.norm() / ( 2.0 * d ); // charge 2 of approximative dipole A
-
-    double muB_z1 =  muB.norm() / ( 2.0 * d ); // charge 1 of approximative dipole B
-    double muB_z2 = -muB.norm() / ( 2.0 * d ); // charge 2 of approximative dipole B
-
-    Point muA_approx = muA_r1 * muA_z1 + muA_r2 * muA_z2;
-    Point muB_approx = muB_r1 * muB_z1 + muB_r2 * muB_z2;
-
-    CHECK(muA[0] == Approx(muA_approx[0]));
-    CHECK(muA[1] == Approx(muA_approx[1]));
-    CHECK(muA[2] == Approx(muA_approx[2]));
-
-    CHECK(muB[0] == Approx(muB_approx[0]));
-    CHECK(muB[1] == Approx(muB_approx[1]));
-    CHECK(muB[2] == Approx(muB_approx[2]));
-
-    Point F_ionion_11 = pot.ion_ion_force(muA_z1, muB_z1, muA_r1 - muB_r1);
-    Point F_ionion_12 = pot.ion_ion_force(muA_z1, muB_z2, muA_r1 - muB_r2);
-    Point F_ionion_21 = pot.ion_ion_force(muA_z2, muB_z1, muA_r2 - muB_r1);
-    Point F_ionion_22 = pot.ion_ion_force(muA_z2, muB_z2, muA_r2 - muB_r2);
-
-    Point F_dipoledipole_approx = F_ionion_11 + F_ionion_12 + F_ionion_21 + F_ionion_22;
-
-    CHECK(F_dipoledipole[0] == Approx(F_dipoledipole_approx[0]));
-    CHECK(F_dipoledipole[1] == Approx(F_dipoledipole_approx[1]));
-    CHECK(F_dipoledipole[2] == Approx(F_dipoledipole_approx[2]));
 }
 #endif
 
