@@ -158,6 +158,7 @@ class SchemeBase {
     std::string name;                 //!< Descriptive name
     TruncationScheme scheme;          //!< Truncation scheme
     double cutoff;                    //!< Cut-off distance
+    double T0;                        //!< Spatial Fourier transformed modified interaction tensor, used to calculate the dielectric constant
     std::array<double,2> self_energy_prefactor; //!< Prefactor for self-energies
     inline SchemeBase(TruncationScheme scheme, double cutoff) : scheme(scheme), cutoff(cutoff) {}
 
@@ -192,7 +193,7 @@ class SchemeBase {
      * @f[ \varepsilon_0 @f] is the vacuum permittivity, @f[ V @f] the volume of the system,
      * @f[ k_B @f] the Boltzmann constant, and @f[ T @f] the temperature.
      */
-    virtual double calc_dielectric(double) const = 0;
+    double calc_dielectric(double M2V) { return ( M2V * T0 + 2.0 * M2V + 1.0 ) / ( M2V * T0 - M2V + 1.0 ); }
 
 #ifdef NLOHMANN_JSON_HPP
   private:
@@ -226,7 +227,7 @@ class SchemeBase {
 template <class Tscheme> class PairPotential : public Tscheme {
   private:
     double invcutoff; // inverse cutoff distance
-    double cutoff2; // square cutoff distance
+    double cutoff2;   // square cutoff distance
   public:
     using Tscheme::cutoff;
     using Tscheme::self_energy_prefactor;
@@ -508,9 +509,12 @@ struct Plain : public SchemeBase {
         name = "plain";
 	doi = "Premier mémoire sur l’électricité et le magnétisme by Charles-Augustin de Coulomb"; // :P
         self_energy_prefactor = {0.0, 0.0};
+	T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     };
     inline double short_range_function(double q) const override { return 1.0; };
-    inline double calc_dielectric(double M2V) const override { return (2 * M2V + 1) / (1 - M2V); }
+    inline double short_range_function_derivative(double q) const { return 0.0; }
+    inline double short_range_function_second_derivative(double q) const { return 0.0; }
+    inline double short_range_function_third_derivative(double q) const { return 0.0; }
 #ifdef NLOHMANN_JSON_HPP
   private:
     inline void _to_json(nlohmann::json &) const override {}
@@ -652,32 +656,27 @@ TEST_CASE("[CoulombGalore] plain") {
 struct Ewald : public SchemeBase {
     double alpha;               //!< Damping-parameter
     double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
-    double epsSur;              //!< Dielectric constant of the surrounding medium
-    const double pi = std::atan(1.0)*4.0;
-    const double pi_sqrt = std::sqrt(pi);
+    double eps_sur;             //!< Dielectric constant of the surrounding medium
+    const double pi_sqrt = 2.0*std::sqrt(std::atan(1.0));
 
     /**
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
      */
-    inline Ewald(double cutoff, double alpha, double epsSur) : SchemeBase(TruncationScheme::ewald, cutoff), alpha(alpha), epsSur(epsSur) {
+    inline Ewald(double cutoff, double alpha, double eps_sur) : SchemeBase(TruncationScheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur) {
         name = "Ewald real-space";
         alphaRed = alpha*cutoff;
         alphaRed2 = alphaRed * alphaRed;
         self_energy_prefactor = { - alphaRed / pi_sqrt, -pow(alphaRed,3) * 2.0 / 3.0 / pi_sqrt };
+        if ( eps_sur < 1.0 )
+            throw std::runtime_error("Dielectric constant of the surrounding medium is less than one");
+        T0 = 2.0 * (eps_sur - 1.0 ) / ( 2.0 * eps_sur + 1.0 );
     }
 
     inline double short_range_function(double q) const override { return std::erfc(alphaRed*q); }
     inline double short_range_function_derivative(double q) const { return -2.0 * std::exp( - alphaRed2 * q * q ) * alphaRed / pi_sqrt; }
     inline double short_range_function_second_derivative(double q) const { return 4.0 * std::exp( - alphaRed2 * q * q ) * alphaRed2 * alphaRed * q / pi_sqrt; }
     inline double short_range_function_third_derivative(double q) const { return -8.0 * std::exp( - alphaRed2 * q * q ) * alphaRed2 * alphaRed * ( alphaRed2 * q * q - 0.5 ) / pi_sqrt; }
-    inline double calc_dielectric(double M2V) const override {
-      if(epsSur == infty) // conducting boundaries
-        return ( 1.0 + 3.0 * M2V );
-      if( std::fabs( epsSur - 1.0 ) < 1e-6 ) // vacuum boundaries
-        return ( 2.0 * M2V + 1.0 ) / ( 1.0 - M2V );
-      return ( 6.0 * M2V * epsSur + 2.0 * epsSur + 1.0 ) / ( 1.0 - 3.0 * M2V + 2.0 * epsSur ); // insulating boundaries
-    }
 
 #ifdef NLOHMANN_JSON_HPP
   private:
@@ -691,6 +690,8 @@ struct Ewald : public SchemeBase {
 TEST_CASE("[CoulombGalore] Ewald real-space") {
     using doctest::Approx;
     double cutoff = 29.0;  // cutoff distance
+    double alpha = 0.1;
+    double eps_sur = infty;
     double zA = 2.0; // charge
     double zB = 3.0; // charge
     Point muA = {19, 7, 11};  // dipole moment
@@ -698,10 +699,68 @@ TEST_CASE("[CoulombGalore] Ewald real-space") {
     Point r = {23, 0, 0};  // distance vector
     Point rh = {1, 0, 0};  // normalized distance vector
 
-    PairPotential<Ewald> pot(cutoff,0.1,infty);
+    PairPotential<Ewald> pot(cutoff,alpha,eps_sur);
 
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.04030497436));
+    CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.399713585));
+    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.36159125));
+    CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
+}
+
+#endif
+
+// -------------- Wolf ---------------
+
+/**
+ * @brief Wolf scheme
+ */
+struct Wolf : public SchemeBase {
+    double alpha;               //!< Damping-parameter
+    double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
+    const double pi_sqrt = 2.0*std::sqrt(std::atan(1.0));
+
+    /**
+     * @param cutoff distance cutoff
+     * @param alpha damping-parameter
+     */
+    inline Wolf(double cutoff, double alpha) : SchemeBase(TruncationScheme::wolf, cutoff), alpha(alpha) {
+        name = "Wolf";
+        alphaRed = alpha*cutoff;
+        alphaRed2 = alphaRed * alphaRed;
+        self_energy_prefactor = { - alphaRed / pi_sqrt, -pow(alphaRed,3) * 2.0 / 3.0 / pi_sqrt };
+        T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
+    }
+
+    inline double short_range_function(double q) const override { return ( std::erfc(alphaRed*q) - std::erfc(alphaRed) ); }
+    inline double short_range_function_derivative(double q) const { return -2.0 * std::exp( - alphaRed2 * q * q ) * alphaRed / pi_sqrt; }
+    inline double short_range_function_second_derivative(double q) const { return 4.0 * std::exp( - alphaRed2 * q * q ) * alphaRed2 * alphaRed * q / pi_sqrt; }
+    inline double short_range_function_third_derivative(double q) const { return -8.0 * std::exp( - alphaRed2 * q * q ) * alphaRed2 * alphaRed * ( alphaRed2 * q * q - 0.5 ) / pi_sqrt; }
+
+#ifdef NLOHMANN_JSON_HPP
+  private:
+    inline void _from_json(const nlohmann::json &j) override { alpha = j.at("alpha").get<int>(); }
+    inline void _to_json(nlohmann::json &j) const override { j = {{"alpha", alpha}}; }
+#endif
+};
+
+#ifdef DOCTEST_LIBRARY_INCLUDED
+
+TEST_CASE("[CoulombGalore] Wolf") {
+    using doctest::Approx;
+    double cutoff = 29.0;  // cutoff distance
+    double alpha = 0.1;
+    double zA = 2.0; // charge
+    double zB = 3.0; // charge
+    Point muA = {19, 7, 11};  // dipole moment
+    Point muB = {13, 17, 5};  // dipole moment
+    Point r = {23, 0, 0};  // distance vector
+    Point rh = {1, 0, 0};  // normalized distance vector
+
+    PairPotential<Wolf> pot(cutoff,alpha);
+
+    // Test short-ranged function
+    CHECK(pot.short_range_function(0.5) == Approx(0.04026387648));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.399713585));
     CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.36159125));
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
@@ -724,13 +783,13 @@ struct qPotential : public SchemeBase {
     inline qPotential(double cutoff, int order) : SchemeBase(TruncationScheme::qpotential, cutoff), order(order) {
         name = "qpotential";
         self_energy_prefactor = {-1.0, -1.0};
+        T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
 
     inline double short_range_function(double q) const override { return qPochhammerSymbol(q, 0, order); }
     inline double short_range_function_derivative(double q) const { return qPochhammerSymbolDerivative(q, 0, order); }
     inline double short_range_function_second_derivative(double q) const { return qPochhammerSymbolSecondDerivative(q, 0, order); }
     inline double short_range_function_third_derivative(double q) const { return qPochhammerSymbolThirdDerivative(q, 0, order); }
-    inline double calc_dielectric(double M2V) const override { return 1 + 3 * M2V; }
 
 #ifdef NLOHMANN_JSON_HPP
   private:
@@ -780,6 +839,7 @@ struct Poisson : public SchemeBase {
         doi = "10.1088/1367-2630/ab1ec1";
         double a1 = -double(C + D) / double(C);
         self_energy_prefactor = {a1, a1};
+        T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
     inline double short_range_function(double q) const override {
         double tmp = 0;
@@ -788,8 +848,6 @@ struct Poisson : public SchemeBase {
                    double(C) * std::pow(q, c);
         return std::pow(1 - q, D + 1) * tmp;
     }
-
-    inline double calc_dielectric(double M2V) const override { return 1 + 3 * M2V; }
 
 #ifdef NLOHMANN_JSON_HPP
   private:
@@ -818,13 +876,13 @@ struct Fanourgakis : public SchemeBase {
         name = "fanourgakis";
         doi = "10.1063/1.3216520";
         self_energy_prefactor = {-1.0, -1.0};
+        T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
 
     inline double short_range_function(double q) const override { return pow(1.0 - q,4.0) * ( 1.0 + 2.25 * q + 3.0 * q*q + 2.5 * q*q*q ); }
     inline double short_range_function_derivative(double q) const { return ( -1.75 + 26.25 * pow(q,4.0) - 42.0 * pow(q,5.0) + 17.5 * pow(q,6.0) ); }
     inline double short_range_function_second_derivative(double q) const { return 105.0 * pow(q,3.0) * pow(q - 1.0, 2); };
     inline double short_range_function_third_derivative(double q) const { return 525.0 * pow(q,2.0) * (q - 0.6) * ( q - 1.0); };
-    inline double calc_dielectric(double M2V) const override { return 1 + 3 * M2V; }
 
 #ifdef NLOHMANN_JSON_HPP
   private:
