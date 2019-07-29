@@ -3,6 +3,7 @@
 #include <string>
 #include <limits>
 #include <cmath>
+#include <iostream>
 #include <Eigen/Core>
 
 namespace CoulombGalore {
@@ -37,13 +38,27 @@ TEST_CASE("[Faunus] Factorial") {
  * @f[
  *     (a;q)_P = \prod_{n=1}^P(1-aq^{n-1})
  * @f]
- * where @f[ a=q^l @f].
+ * where @f[ a=q^l @f]. In the implementation we use that
+ * @f[
+ *     (q^l;q)_P = (1-q)^P\prod_{n=1}^P\sum_{k=0}^{n+l}q^k
+ * @f]
+ * which gives simpler expressions for the derivatives.
  *
  * More information here: http://mathworld.wolfram.com/q-PochhammerSymbol.html
- *
- * P = 300 gives an error of about 10^-17 for k < 4.
  */
 inline double qPochhammerSymbol(double q, int l = 0, int P = 300) {
+    double Ct = 1.0; // evaluates to \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
+    for(int n = 1; n < P + 1; n++) {
+        double val = 0.0;
+        for(int k = 1; k < n + l + 1; k++)
+            val += pow( q , k - 1 );
+        Ct *= val;
+    }
+    double Dt = pow( 1.0 - q , P ); // (1-q)^P
+    return ( Ct * Dt );
+
+  /*
+    // Alternative form, maybe faster than above...
     double qPS = 1.0;
     double qln = std::pow(q, l+1); // a * q^{n-1} = q^{l+n}
     for (int n = 1; n < P + 1; n++) {
@@ -51,46 +66,80 @@ inline double qPochhammerSymbol(double q, int l = 0, int P = 300) {
         qln *= q;
     }
     return qPS;
+    */
 }
 
 /**
  * @brief Gives the derivative of the q-Pochhammer Symbol
  */
 inline double qPochhammerSymbolDerivative(double q, int l = 0, int P = 300) {
-    double qPS = 1.0;  // will evaluate to q-Pochhammer Symbol
-    double dqPS = 0.0; // will evaluate to derivative of the q-Pochhammer Symbol
-    double qln = std::pow(q, l+1); // a * q^{n-1} = q^{l+n}
-    for (int n = 1; n < P + 1; n++) {
-        qPS *= ( 1.0 - qln );
-        dqPS -= ( l + n ) * qln / ( 1.0 - qln );
-        qln *= q;
+    double Ct = 1.0; // evaluates to \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
+    for(int n = 1; n < P + 1; n++) {
+        double val = 0.0;
+        for(int k = 1; k < n + l + 1; k++)
+            val += pow( q , k - 1 );
+        Ct *= val;
     }
-    dqPS = dqPS / q * qPS;
-    return dqPS;
+    double dCt = 0.0; // evaluates to derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
+    for(int n = 1; n < P + 1; n++) {
+        double nom = 0.0;
+        double denom = 1.0;
+        for(int k = 2; k < n + l + 1; k++) {
+            nom += ( k - 1 ) * pow( q , k - 2 );
+            denom += pow( q , k - 1 );
+        }
+        dCt += nom / denom;
+    }
+    dCt *= Ct;
+    double Dt = pow( 1.0 - q , P ); // (1-q)^P
+    double dDt = 0.0;
+    if(P > 0)
+        dDt = -P * pow( 1 - q , P - 1 ); // derivative of (1-q)^P
+    return ( Ct * dDt + dCt * Dt );
 }
 
 /**
  * @brief Gives the second derivative of the q-Pochhammer Symbol
  */
 inline double qPochhammerSymbolSecondDerivative(double q, int l = 0, int P = 300) {
-    double qPS = 1.0;   // will evaluate to q-Pochhammer Symbol
-    double dqPS = 0.0;  // will evaluate to derivative of the q-Pochhammer Symbol
-    double ddqPS = 0.0; // will evaluate to the second derivative of the q-Pochhammer Symbol
-    double qln = std::pow(q, l+1); // a * q^{n-1} = q^{l+n}
-    for (int n = 1; n < P + 1; n++) {
-        qPS *= ( 1.0 - qln );
-        dqPS -= ( l + n ) * qln / ( 1.0 - qln );
-        ddqPS -= ( qln + l + n - 1.0 ) * ( l + n ) * qln / ( 1.0 - qln ) / ( 1.0 - qln );
-        qln *= q;
+    double Ct = 1.0; // evaluates to \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
+    double DS = 0.0;
+    double dDS = 0.0;
+    for(int n = 1; n < P + 1; n++) {
+        double tmp = 0.0;
+        for(int k = 1; k < n + l + 1; k++)
+            tmp += pow( q , k - 1 );
+        Ct *= tmp;
+        double nom = 0.0;
+        double denom = 1.0;
+        for(int k = 2; k < n + l + 1; k++) {
+            nom += ( k - 1 ) * pow( q , k - 2 );
+            denom += pow( q , k - 1 );
+        }
+        DS += nom / denom;
+        double diffNom = 0.0;
+        double diffDenom = 1.0;
+        for(int k = 3; k < n + l + 1; k++) {
+            diffNom += ( k - 1 ) * ( k - 2 ) * pow( q , k - 3 );
+            diffDenom += ( k - 1) * pow( q , k - 2 );
+        }
+        dDS += ( diffNom * denom - nom * diffDenom ) / denom / denom;
     }
-    ddqPS /= ( q * q );
-    dqPS = dqPS / q * qPS;
-    ddqPS = ( ddqPS * qPS + dqPS * dqPS / qPS );
-    return ddqPS;
+    double dCt = Ct * DS; // derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
+    double ddCt = dCt * DS + Ct * dDS; // second derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
+    double Dt = pow( 1.0 - q , P ); // (1-q)^P
+    double dDt = 0.0;
+    if(P > 0)
+        dDt = -P * pow( 1 - q , P - 1 ); // derivative of (1-q)^P
+    double ddDt = 0.0;
+    if(P > 1)
+        ddDt = P * ( P - 1 ) * pow( 1 - q , P - 2 ); // second derivative of (1-q)^P
+    return (Ct*ddDt + 2*dCt*dDt + ddCt*Dt);
 }
 
 /**
  * @brief Gives the third derivative of the q-Pochhammer Symbol
+ * @warning Needs to be fixed for q=0 and q=1
  */
 inline double qPochhammerSymbolThirdDerivative(double q, int l = 0, int P = 300) {
     double qPS = 1.0;    // will evaluate to q-Pochhammer Symbol
@@ -732,8 +781,8 @@ struct Wolf : public SchemeBase {
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
 
-    inline double short_range_function(double q) const override { return ( std::erfc(alphaRed*q) - std::erfc(alphaRed) ); }
-    inline double short_range_function_derivative(double q) const { return -2.0 * std::exp( - alphaRed2 * q * q ) * alphaRed / pi_sqrt; }
+    inline double short_range_function(double q) const override { return ( std::erfc(alphaRed*q) - q * std::erfc(alphaRed) ); }
+    inline double short_range_function_derivative(double q) const { return ( -2.0 * std::exp( - alphaRed2 * q * q ) * alphaRed / pi_sqrt - std::erfc(alphaRed) ); }
     inline double short_range_function_second_derivative(double q) const { return 4.0 * std::exp( - alphaRed2 * q * q ) * alphaRed2 * alphaRed * q / pi_sqrt; }
     inline double short_range_function_third_derivative(double q) const { return -8.0 * std::exp( - alphaRed2 * q * q ) * alphaRed2 * alphaRed * ( alphaRed2 * q * q - 0.5 ) / pi_sqrt; }
 
@@ -760,10 +809,11 @@ TEST_CASE("[CoulombGalore] Wolf") {
     PairPotential<Wolf> pot(cutoff,alpha);
 
     // Test short-ranged function
-    CHECK(pot.short_range_function(0.5) == Approx(0.04026387648));
-    CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.399713585));
+    CHECK(pot.short_range_function(0.5) == Approx(0.04028442542));
+    CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.3997546829));
     CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.36159125));
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
+    CHECK(pot.short_range_function(1.0) == Approx(0.0));
 }
 
 #endif
@@ -817,6 +867,16 @@ TEST_CASE("[CoulombGalore] qPotential") {
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-1.453125));
     CHECK(pot.short_range_function_second_derivative(0.5) == Approx(1.9140625));
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(17.25));
+
+    CHECK(pot.short_range_function(1.0) == Approx(0.0));
+    CHECK(pot.short_range_function_derivative(1.0) == Approx(0.0));
+    CHECK(pot.short_range_function_second_derivative(1.0) == Approx(0.0));
+    //CHECK(pot.short_range_function_third_derivative(1.0) == Approx(0.0));
+
+    CHECK(pot.short_range_function(0.0) == Approx(1.0));
+    CHECK(pot.short_range_function_derivative(0.0) == Approx(-1.0));
+    CHECK(pot.short_range_function_second_derivative(0.0) == Approx(-2.0));
+    //CHECK(pot.short_range_function_third_derivative(0.0) == Approx(0.0));
 }
 
 #endif
