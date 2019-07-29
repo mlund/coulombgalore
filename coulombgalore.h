@@ -3,7 +3,6 @@
 #include <string>
 #include <limits>
 #include <cmath>
-#include <iostream>
 #include <Eigen/Core>
 
 namespace CoulombGalore {
