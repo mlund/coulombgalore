@@ -905,8 +905,8 @@ TEST_CASE("[CoulombGalore] qPotential") {
  *
  *  Keyword       |  Description
  *  ------------- |  -------------------------------------------
- *  `C`           |  Type of splitting function as defined above
- *  `D`           |  Type of splitting function as defined above
+ *  `C`           |  Number of cancelled derivatives at origin -2 (starting from second derivative)
+ *  `D`           |  Number of cancelled derivatives at the cut-off (starting from zeroth derivative)
  *  `cutoff`      |  Spherical cutoff in angstroms
  *
  *  More info:
