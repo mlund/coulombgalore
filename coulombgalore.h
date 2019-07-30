@@ -234,9 +234,10 @@ class SchemeBase {
     std::string name;                 //!< Descriptive name
     TruncationScheme scheme;          //!< Truncation scheme
     double cutoff;                    //!< Cut-off distance
+    double debye_length;              //!< Debye-length
     double T0;                        //!< Spatial Fourier transformed modified interaction tensor, used to calculate the dielectric constant
     std::array<double,2> self_energy_prefactor; //!< Prefactor for self-energies
-    inline SchemeBase(TruncationScheme scheme, double cutoff) : scheme(scheme), cutoff(cutoff) {}
+    inline SchemeBase(TruncationScheme scheme, double cutoff, double debye_length=infty) : scheme(scheme), cutoff(cutoff), debye_length(debye_length) {}
 
     /**
      * @brief Short-range function
@@ -304,8 +305,10 @@ template <class Tscheme> class PairPotential : public Tscheme {
   private:
     double invcutoff; // inverse cutoff distance
     double cutoff2;   // square cutoff distance
+    double kappa;     // inverse Debye-length
   public:
     using Tscheme::cutoff;
+    using Tscheme::debye_length;
     using Tscheme::self_energy_prefactor;
     using Tscheme::short_range_function;
     using Tscheme::short_range_function_derivative;
@@ -315,6 +318,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
     template <class... Args> PairPotential(Args &&... args) : Tscheme(args...) {
       invcutoff = 1.0 / cutoff;
       cutoff2 = cutoff*cutoff;
+      kappa = 1.0 / debye_length;
     }
 
     /**
@@ -331,7 +335,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
     inline double ion_potential(double z, double r) {
         if ( r < cutoff ) {
             double q = r * invcutoff;
-            return z / r * short_range_function(q);
+            return z / r * short_range_function(q) * std::exp( -kappa * r);
         } else {
             return 0.0;
         }
@@ -353,7 +357,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
         if ( r2 < cutoff2 ) {
             double r1 = std::sqrt(r2);
             double q = r1 * invcutoff;
-            return mu.dot(r) / r2 / r1  * ( short_range_function(q) - q * short_range_function_derivative(q) );
+            return mu.dot(r) / r2 / r1  * ( short_range_function(q) * ( 1.0 + kappa * r1 ) - q * short_range_function_derivative(q) ) * std::exp( -kappa * r1);
         } else {
             return 0.0;
         }
@@ -375,7 +379,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
         if ( r2 < cutoff2 ) {
             double r1 = std::sqrt(r2);
             double q = r1 * invcutoff;
-            return z * r / r2 / r1 * ( short_range_function(q) - q * short_range_function_derivative(q) );
+            return z * r / r2 / r1 * ( short_range_function(q) * ( 1.0 + kappa * r1 )  - q * short_range_function_derivative(q) ) * std::exp( -kappa * r1);
         } else {
             return {0,0,0};
         }
@@ -397,10 +401,13 @@ template <class Tscheme> class PairPotential : public Tscheme {
         if ( r2 < cutoff2 ) {
             double r1 = std::sqrt(r2);
             double q = r1 * invcutoff;
-            double second_derivative_scaled = q * q / 3.0 * short_range_function_second_derivative(q);
-            Point field = ( 3.0 * mu.dot(r) * r / r2 - mu ) / r2 / r1 * ( short_range_function(q) - q * short_range_function_derivative(q) + second_derivative_scaled );
-            field += mu / r2 / r1 * second_derivative_scaled;
-            return field;
+	    double srf = short_range_function(q);
+	    double dsrf = short_range_function_derivative(q);
+	    double ddsrf = short_range_function_second_derivative(q);
+            Point field = ( 3.0 * mu.dot(r) * r / r2 - mu ) / r2 / r1;
+	    field *= ( srf * ( 1.0 + kappa * r1 + kappa * kappa * r2 / 3.0 ) - q * dsrf * ( 1.0 + 2.0 / 3.0 * kappa * r1 ) + q * q / 3.0 * ddsrf );
+            field += mu / r2 / r1 * ( srf * kappa * kappa * r2 - 2.0 * kappa * r1 * q * dsrf +  ddsrf * q * q ) / 3.0;
+            return field * std::exp( -kappa * r1);
         } else {
             return {0,0,0};
         }
@@ -527,11 +534,15 @@ template <class Tscheme> class PairPotential : public Tscheme {
             double r4 = r2 * r2;
             double muAdotRh = muA.dot(rh);
             double muBdotRh = muB.dot(rh);
-            Point force = 3.0 * ( ( 5.0 * muAdotRh*muBdotRh - muA.dot(muB) ) * rh - muBdotRh * muA - muAdotRh * muB  ) / r4;
-            double second_derivative = short_range_function_second_derivative(q);
-            force *= ( short_range_function(q) - q * short_range_function_derivative(q) + q * q / 3.0 * second_derivative );
-            force += muAdotRh * muBdotRh * rh / r4 *( second_derivative - q * short_range_function_third_derivative(q) ) * q * q;
-            return force;
+            Point forceD = 3.0 * ( ( 5.0 * muAdotRh*muBdotRh - muA.dot(muB) ) * rh - muBdotRh * muA - muAdotRh * muB  ) / r4;
+	    double srf = short_range_function(q);
+	    double dsrf = short_range_function_derivative(q);
+            double ddsrf = short_range_function_second_derivative(q);
+	    double dddsrf = short_range_function_third_derivative(q);
+            forceD *= ( srf * ( 1.0 + kappa * r1 + kappa * kappa * r2 / 3.0 ) - q * dsrf * ( 1.0 + 2.0 / 3.0 * kappa * r1 ) + q * q / 3.0 * ddsrf );
+            Point forceI = muAdotRh * muBdotRh * rh / r4;
+            forceI *= ( srf * ( 1.0 + kappa * r1 ) * kappa * kappa * r2 - q * dsrf * ( 3.0 * kappa * r1 + 2.0 ) * kappa * r1 + ddsrf * ( 1.0 + 3.0 * kappa * r1 ) * q * q - q * q * q * dddsrf );
+            return ( forceD + forceI ) * std::exp( -kappa * r1);
         } else {
             return {0,0,0};
         }
@@ -581,11 +592,12 @@ template <class Tscheme> class PairPotential : public Tscheme {
  * @brief No truncation scheme
  */
 struct Plain : public SchemeBase {
-    inline Plain() : SchemeBase(TruncationScheme::plain, infty){
+    double debye_length;        //!< Debye-length (optional)
+    inline Plain( double debye_length=infty ) : SchemeBase(TruncationScheme::plain, infty, debye_length), debye_length(debye_length) {
         name = "plain";
-	doi = "Premier mémoire sur l’électricité et le magnétisme by Charles-Augustin de Coulomb"; // :P
+        doi = "Premier mémoire sur l’électricité et le magnétisme by Charles-Augustin de Coulomb"; // :P
         self_energy_prefactor = {0.0, 0.0};
-	T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
+        T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     };
     inline double short_range_function(double q) const override { return 1.0; };
     inline double short_range_function_derivative(double q) const { return 0.0; }
@@ -609,8 +621,8 @@ TEST_CASE("[CoulombGalore] plain") {
     Point muB = {13, 17, 5};  // dipole moment
     Point r = {23, 0, 0};  // distance vector
     Point rh = {1, 0, 0};  // normalized distance vector
-
     PairPotential<Plain> pot;
+
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(1.0));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(0.0));
@@ -618,9 +630,8 @@ TEST_CASE("[CoulombGalore] plain") {
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(0.0));
 
     // Test potentials
-    CHECK(pot.ion_potential(zA, cutoff + 1.0) == Approx(0.06666666667 ));
+    CHECK(pot.ion_potential(zA, cutoff + 1.0) == Approx(0.06666666667));
     CHECK(pot.ion_potential(zA, r.norm()) == Approx(0.08695652174));
-
     CHECK(pot.dipole_potential(muA, ( cutoff + 1.0 ) * rh) == Approx(0.02111111111));
     CHECK(pot.dipole_potential(muA, r) == Approx(0.03591682420));
 
@@ -629,7 +640,6 @@ TEST_CASE("[CoulombGalore] plain") {
     Point E_ion = pot.ion_field(zA, r);
     CHECK(E_ion[0] == Approx(0.003780718336));
     CHECK(E_ion.norm() == Approx(0.003780718336));
-
     CHECK(pot.dipole_field(muA, ( cutoff + 1.0 ) * rh).norm() == Approx(0.001487948846));
     Point E_dipole = pot.dipole_field(muA, r);
     CHECK(E_dipole[0] == Approx(0.003123202104));
@@ -639,10 +649,8 @@ TEST_CASE("[CoulombGalore] plain") {
     // Test energies
     CHECK(pot.ion_ion_energy(zA, zB, ( cutoff + 1.0 )) == Approx(0.2));
     CHECK(pot.ion_ion_energy(zA, zB, r.norm()) == Approx(0.2608695652));
-
     CHECK(pot.ion_dipole_energy(zA, muB, ( cutoff + 1.0 ) * rh) == Approx(-0.02888888889));
     CHECK(pot.ion_dipole_energy(zA, muB, r) == Approx(-0.04914933837));
-
     CHECK(pot.dipole_dipole_energy(muA, muB, ( cutoff + 1.0 ) * rh) == Approx(-0.01185185185));
     CHECK(pot.dipole_dipole_energy(muA, muB, r) == Approx(-0.02630064930));
 
@@ -651,13 +659,11 @@ TEST_CASE("[CoulombGalore] plain") {
     Point F_ionion = pot.ion_ion_force(zA, zB, r);
     CHECK(F_ionion[0] == Approx(0.01134215501));
     CHECK(F_ionion.norm() == Approx(0.01134215501));
-
     CHECK(pot.ion_dipole_force(zB, muA, ( cutoff + 1.0 ) * rh).norm() == Approx(0.004463846540));
     Point F_iondipole = pot.ion_dipole_force(zB, muA, r);
     CHECK(F_iondipole[0] == Approx(0.009369606312));
     CHECK(F_iondipole[1] == Approx(-0.001725980110));
     CHECK(F_iondipole[2] == Approx(-0.002712254459));
-
     CHECK(pot.dipole_dipole_force(muA, muB, ( cutoff + 1.0 ) * rh).norm() == Approx(0.002129033733));
     Point F_dipoledipole = pot.dipole_dipole_force(muA, muB, r);
     CHECK(F_dipoledipole[0] == Approx(0.003430519474));
@@ -719,6 +725,34 @@ TEST_CASE("[CoulombGalore] plain") {
     CHECK(F_dipoledipole[0] == Approx(F_dipoledipole_approx[0]));
     CHECK(F_dipoledipole[1] == Approx(F_dipoledipole_approx[1]));
     CHECK(F_dipoledipole[2] == Approx(F_dipoledipole_approx[2]));
+
+    // Check Yukawa-interactions
+    double debye_length = 23.0;
+    PairPotential<Plain> potY(debye_length);
+
+    // Test potentials
+    CHECK(potY.ion_potential(zA, cutoff + 1.0) == Approx(0.01808996296));
+    CHECK(potY.ion_potential(zA, r.norm()) == Approx(0.03198951663));
+    CHECK(potY.dipole_potential(muA, ( cutoff + 1.0 ) * rh) == Approx(0.01320042949));
+    CHECK(potY.dipole_potential(muA, r) == Approx(0.02642612243));
+
+    // Test fields
+    CHECK(potY.ion_field(zA, ( cutoff + 1.0 ) * rh).norm() == Approx(0.001389518894));
+    Point E_ion_Y = potY.ion_field(zA, r);
+    CHECK(E_ion_Y[0] == Approx(0.002781697098));
+    CHECK(E_ion_Y.norm() == Approx(0.002781697098));
+    CHECK(potY.dipole_field(muA, ( cutoff + 1.0 ) * rh).norm() == Approx(0.001242154748));
+    Point E_dipole_Y = potY.dipole_field(muA, r);
+    CHECK(E_dipole_Y[0] == Approx(0.002872404612));
+    CHECK(E_dipole_Y[1] == Approx(-0.0004233017324));
+    CHECK(E_dipole_Y[2] == Approx(-0.0006651884364));
+
+    // Test forces
+    CHECK(potY.dipole_dipole_force(muA, muB, ( cutoff + 1.0 ) * rh).norm() == Approx(0.001859094075));
+    Point F_dipoledipole_Y = potY.dipole_dipole_force(muA, muB, r);
+    CHECK(F_dipoledipole_Y[0] == Approx(0.003594120919));
+    CHECK(F_dipoledipole_Y[1] == Approx(-0.003809715590));
+    CHECK(F_dipoledipole_Y[2] == Approx(-0.002190126354));
 }
 
 #endif
@@ -732,13 +766,14 @@ struct Ewald : public SchemeBase {
     double alpha;               //!< Damping-parameter
     double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
     double eps_sur;             //!< Dielectric constant of the surrounding medium
+    double debye_length;        //!< Debye-length (optional)
     const double pi_sqrt = 2.0*std::sqrt(std::atan(1.0));
 
     /**
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
      */
-    inline Ewald(double cutoff, double alpha, double eps_sur) : SchemeBase(TruncationScheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur) {
+    inline Ewald(double cutoff, double alpha, double eps_sur, double debye_length=infty) : SchemeBase(TruncationScheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur), debye_length(debye_length) {
         name = "Ewald real-space";
         alphaRed = alpha*cutoff;
         alphaRed2 = alphaRed * alphaRed;
@@ -945,35 +980,39 @@ struct PoissonSimple : public SchemeBase {
  *
  *  The following keywords are required:
  *
- *  Keyword       |  Description
- *  ------------- |  -------------------------------------------
- *  `cutoff`      |  Spherical cutoff in angstroms
- *  `C`           |  Number of cancelled derivatives at origin -2 (starting from second derivative)
- *  `D`           |  Number of cancelled derivatives at the cut-off (starting from zeroth derivative)
- *  `kappa^{-1}`  |  Debye-length (optional)
+ *  Keyword        |  Description
+ *  -------------- |  -------------------------------------------
+ *  `cutoff`       |  Spherical cutoff in angstroms
+ *  `C`            |  Number of cancelled derivatives at origin -2 (starting from second derivative)
+ *  `D`            |  Number of cancelled derivatives at the cut-off (starting from zeroth derivative)
+ *  `debye_length` |  Debye-length (optional)
  *
  *  More info:
  *
  *  - http://dx.doi.org/10.1088/1367-2630/ab1ec1
  */
 struct Poisson : public SchemeBase {
-    signed int C, D;
-    double debye_length, invDebye_lengthRed;
+    signed int C, D;                          //!< Derivative cancelling-parameters
+    double debye_length, kappaRed, kappaRed2; //!< Debye-length and reduced inverse Debye-length (optional)
+    double yukawa_denom, binomCDC;
     bool yukawa;
 
     inline Poisson(double cutoff, signed int C, signed int D, double debye_length=infty)
-        : SchemeBase(TruncationScheme::poisson, cutoff), C(C), D(D), debye_length(debye_length) {
+        : SchemeBase(TruncationScheme::poisson, cutoff, debye_length), C(C), D(D), debye_length(debye_length) {
         if ( ( C < 1 ) || ( D < -1 ) )
             throw std::runtime_error("`C` must be larger than zero and `D` must be larger or equal to negative one");
         name = "poisson";
         doi = "10.1088/1367-2630/ab1ec1";
         double a1 = -double(C + D) / double(C);
-        invDebye_lengthRed = cutoff / debye_length;
+        kappaRed = cutoff / debye_length;
         yukawa = false;
-        if( std::fabs( invDebye_lengthRed ) > 1e-6 ) {
+        if( std::fabs( kappaRed ) > 1e-6 ) {
             yukawa = true;
-            a1 *= -2.0 * invDebye_lengthRed / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed) );
+            a1 *= -2.0 * kappaRed / ( 1.0 - std::exp( 2.0 * kappaRed) );
+            kappaRed2 = kappaRed * kappaRed;
+            yukawa_denom = 1.0 / ( 1.0 - std::exp( 2.0 * kappaRed ) );
         }
+        binomCDC = double( binomial( C + D , C ) * D );
         self_energy_prefactor = {a1, a1};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
@@ -981,7 +1020,7 @@ struct Poisson : public SchemeBase {
         double tmp = 0;
         double qp = q;
         if( yukawa )
-            qp = ( 1.0 - std::exp( 2.0 * invDebye_lengthRed * q ) ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
+            qp = ( 1.0 - std::exp( 2.0 * kappaRed * q ) ) * yukawa_denom;
         for (signed int c = 0; c < C; c++)
             tmp += double( binomial( D - 1 + c , c ) ) * double( C - c ) / double(C) * std::pow( qp , double( c ) );
         return std::pow(1.0 - qp, double( D + 1 )) * tmp;
@@ -990,8 +1029,8 @@ struct Poisson : public SchemeBase {
         double qp = q;
         double dqpdq = 1.0;
         if( yukawa ) {
-            qp = ( 1.0 - std::exp( 2.0 * invDebye_lengthRed * q ) ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
-            dqpdq = -2.0 * invDebye_lengthRed * std::exp( 2.0 * invDebye_lengthRed * q ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
+            qp = ( 1.0 - std::exp( 2.0 * kappaRed * q ) ) * yukawa_denom;
+            dqpdq = -2.0 * kappaRed * std::exp( 2.0 * kappaRed * q ) * yukawa_denom;
         }
         double tmp1 = 1.0;
         double tmp2 = 0.0;
@@ -1008,9 +1047,9 @@ struct Poisson : public SchemeBase {
         double d2qpdq2 = 0.0;
         double dSdqp = 0.0;
         if( yukawa ) {
-            qp = ( 1.0 - std::exp( 2.0 * invDebye_lengthRed * q ) ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
-            dqpdq = -2.0 * invDebye_lengthRed * std::exp( 2.0 * invDebye_lengthRed * q ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
-            d2qpdq2 = -4.0 * invDebye_lengthRed * invDebye_lengthRed * std::exp( 2.0 * invDebye_lengthRed * q ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
+            qp = ( 1.0 - std::exp( 2.0 * kappaRed * q ) ) * yukawa_denom;
+            dqpdq = -2.0 * kappaRed * std::exp( 2.0 * kappaRed * q ) * yukawa_denom;
+            d2qpdq2 = -4.0 * kappaRed2 * std::exp( 2.0 * kappaRed * q ) * yukawa_denom;
             double tmp1 = 1.0;
             double tmp2 = 0.0;
             for (signed int c = 1; c < C; c++) {
@@ -1019,7 +1058,7 @@ struct Poisson : public SchemeBase {
             }
             dSdqp = ( -double(D + 1) * pow( 1.0 - qp , double( D ) ) * tmp1 + pow( 1.0 - qp , double( D + 1 ) ) * tmp2 );
         }
-        double d2Sdqp2 = double( binomial( C + D , C ) * D ) * std::pow( 1.0 - qp , double( D ) - 1.0 ) * std::pow( qp , double( C ) - 1.0 );
+        double d2Sdqp2 = binomCDC * std::pow( 1.0 - qp , double( D ) - 1.0 ) * std::pow( qp , double( C ) - 1.0 );
         return ( d2Sdqp2 * dqpdq * dqpdq + dSdqp * d2qpdq2 );
     };
     inline double short_range_function_third_derivative(double q) const {
@@ -1030,11 +1069,11 @@ struct Poisson : public SchemeBase {
         double d2Sdqp2 = 0.0;
         double dSdqp = 0.0;
         if( yukawa ) {
-            qp = ( 1.0 - std::exp( 2.0 * invDebye_lengthRed * q ) ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
-            dqpdq = -2.0 * invDebye_lengthRed * std::exp( 2.0 * invDebye_lengthRed * q ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
-            d2qpdq2 = -4.0 * invDebye_lengthRed * invDebye_lengthRed * std::exp( 2.0 * invDebye_lengthRed * q ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
-            d3qpdq3 = -8.0 * invDebye_lengthRed * invDebye_lengthRed * invDebye_lengthRed * std::exp( 2.0 * invDebye_lengthRed * q ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
-            d2Sdqp2 = double( binomial( C + D , C ) * D ) * std::pow( 1.0 - qp , double( D ) - 1.0 ) * std::pow( qp , double( C ) - 1.0 );
+            qp = ( 1.0 - std::exp( 2.0 * kappaRed * q ) ) * yukawa_denom;
+            dqpdq = -2.0 * kappaRed * std::exp( 2.0 * kappaRed * q ) * yukawa_denom;
+            d2qpdq2 = -4.0 * kappaRed2 * std::exp( 2.0 * kappaRed * q ) * yukawa_denom;
+            d3qpdq3 = -8.0 * kappaRed2 * kappaRed * std::exp( 2.0 * kappaRed * q ) * yukawa_denom;
+            d2Sdqp2 = binomCDC * std::pow( 1.0 - qp , double( D ) - 1.0 ) * std::pow( qp , double( C ) - 1.0 );
             double tmp1 = 1.0;
             double tmp2 = 0.0;
             for (signed int c = 1; c < C; c++) {
@@ -1043,7 +1082,7 @@ struct Poisson : public SchemeBase {
             }
             dSdqp = ( -double(D + 1) * pow( 1.0 - qp , double( D ) ) * tmp1 + pow( 1.0 - qp , double( D + 1 ) ) * tmp2 );
         }
-        double d3Sdqp3 = double( binomial( C + D , C ) * D ) * std::pow( 1.0 - qp , double( D ) - 2.0 ) * std::pow( qp , double( C ) - 2.0 ) * ( ( 2.0 - double(C + D) ) * qp +  double( C ) - 1.0 );
+        double d3Sdqp3 = binomCDC * std::pow( 1.0 - qp , double( D ) - 2.0 ) * std::pow( qp , double( C ) - 2.0 ) * ( ( 2.0 - double(C + D) ) * qp +  double( C ) - 1.0 );
         return ( d3Sdqp3 * dqpdq * dqpdq * dqpdq + 3.0*d2Sdqp2 * dqpdq * d2qpdq2 + dSdqp * d3qpdq3 );
     };
 
@@ -1072,12 +1111,10 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(pot33.short_range_function_second_derivative(0.5) == Approx(3.75));
     CHECK(pot33.short_range_function_third_derivative(0.5) == Approx(0.0));
     CHECK(pot33.short_range_function_third_derivative(0.6) == Approx(-5.76));
-
     CHECK(pot33.short_range_function(1.0) == Approx(0.0));
     CHECK(pot33.short_range_function_derivative(1.0) == Approx(0.0));
     CHECK(pot33.short_range_function_second_derivative(1.0) == Approx(0.0));
     CHECK(pot33.short_range_function_third_derivative(1.0) == Approx(0.0));
-
     CHECK(pot33.short_range_function(0.0) == Approx(1.0));
     CHECK(pot33.short_range_function_derivative(0.0) == Approx(-2.0));
     CHECK(pot33.short_range_function_second_derivative(0.0) == Approx(0.0));
@@ -1091,7 +1128,6 @@ TEST_CASE("[CoulombGalore] Poisson") {
     Point muB = {13, 17, 5};  // dipole moment
     Point r = {23, 0, 0};  // distance vector
     Point rh = {1, 0, 0};  // normalized distance vector
-
     PairPotential<Poisson> pot43(cutoff,C,D);
 
     // Test short-ranged function
@@ -1103,7 +1139,6 @@ TEST_CASE("[CoulombGalore] Poisson") {
     // Test potentials
     CHECK(pot43.ion_potential(zA, cutoff) == Approx(0.0));
     CHECK(pot43.ion_potential(zA, r.norm()) == Approx(0.0009430652121));
-
     CHECK(pot43.dipole_potential(muA, cutoff * rh) == Approx(0.0));
     CHECK(pot43.dipole_potential(muA, r) == Approx(0.005750206554));
 
@@ -1112,7 +1147,6 @@ TEST_CASE("[CoulombGalore] Poisson") {
     Point E_ion = pot43.ion_field(zA, r);
     CHECK(E_ion[0] == Approx(0.0006052849004));
     CHECK(E_ion.norm() == Approx(0.0006052849004));
-
     CHECK(pot43.dipole_field(muA, cutoff * rh).norm() == Approx(0.0));
     Point E_dipole = pot43.dipole_field(muA, r);
     CHECK(E_dipole[0] == Approx(0.002702513754));
@@ -1122,10 +1156,8 @@ TEST_CASE("[CoulombGalore] Poisson") {
     // Test energies
     CHECK(pot43.ion_ion_energy(zA, zB, cutoff) == Approx(0.0));
     CHECK(pot43.ion_ion_energy(zA, zB, r.norm()) == Approx(0.002829195636));
-
     CHECK(pot43.ion_dipole_energy(zA, muB, cutoff * rh) == Approx(0.0));
     CHECK(pot43.ion_dipole_energy(zA, muB, r) == Approx(-0.007868703705));
-
     CHECK(pot43.dipole_dipole_energy(muA, muB, cutoff * rh) == Approx(0.0));
     CHECK(pot43.dipole_dipole_energy(muA, muB, r) == Approx(-0.03284312288));
 
@@ -1134,30 +1166,53 @@ TEST_CASE("[CoulombGalore] Poisson") {
     Point F_ionion = pot43.ion_ion_force(zA, zB, r);
     CHECK(F_ionion[0] == Approx(0.001815854701));
     CHECK(F_ionion.norm() == Approx(0.001815854701));
-
     CHECK(pot43.ion_dipole_force(zB, muA, cutoff * rh).norm() == Approx(0.0));
     Point F_iondipole = pot43.ion_dipole_force(zB, muA, r);
     CHECK(F_iondipole[0] == Approx(0.008107541263));
     CHECK(F_iondipole[1] == Approx(-0.0002763257154));
     CHECK(F_iondipole[2] == Approx(-0.0004342261242));
-
     CHECK(pot43.dipole_dipole_force(muA, muB, cutoff * rh).norm() == Approx(0.0));
     Point F_dipoledipole = pot43.dipole_dipole_force(muA, muB, r);
     CHECK(F_dipoledipole[0] == Approx(0.009216400961));
     CHECK(F_dipoledipole[1] == Approx(-0.002797126801));
     CHECK(F_dipoledipole[2] == Approx(-0.001608010094));
 
+    // Test Yukawa-interactions
     C = 3; // number of cancelled derivatives at origin -2 (starting from second derivative)
     D = 3; // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
     cutoff = 29.0;  // cutoff distance
-    double kappa = 1.2*29.0;
-    PairPotential<Poisson> potY(cutoff,C,D,kappa);
+    double debye_length = 23.0;
+    PairPotential<Poisson> potY(cutoff,C,D,debye_length);
 
     // Test short-ranged function
-    CHECK(potY.short_range_function(0.5) == Approx(0.4224671954));
-    CHECK(potY.short_range_function_derivative(0.5) == Approx(-1.487744082));
-    CHECK(potY.short_range_function_second_derivative(0.5) == Approx(-0.346015678));
-    CHECK(potY.short_range_function_third_derivative(0.5) == Approx(13.64702584));
+    CHECK(potY.short_range_function(0.5) == Approx(0.5673222034));
+    CHECK(potY.short_range_function_derivative(0.5) == Approx(-1.437372757));
+    CHECK(potY.short_range_function_second_derivative(0.5) == Approx(-2.552012334));
+    CHECK(potY.short_range_function_third_derivative(0.5) == Approx(4.384434209));
+
+    // Test potentials
+    CHECK(potY.ion_potential(zA, cutoff) == Approx(0.0));
+    CHECK(potY.ion_potential(zA, r.norm()) == Approx(0.003344219306));
+    CHECK(potY.dipole_potential(muA, cutoff * rh) == Approx(0.0));
+    CHECK(potY.dipole_potential(muA, r) == Approx(0.01614089171));
+
+    // Test fields
+    CHECK(potY.ion_field(zA, cutoff * rh).norm() == Approx(0.0));
+    Point E_ion_Y = potY.ion_field(zA, r);
+    CHECK(E_ion_Y[0] == Approx(0.001699041230));
+    CHECK(E_ion_Y.norm() == Approx(0.001699041230));
+    CHECK(potY.dipole_field(muA, cutoff * rh).norm() == Approx(0.0));
+    Point E_dipole_Y = potY.dipole_field(muA, r);
+    CHECK(E_dipole_Y[0] == Approx(0.004956265485));
+    CHECK(E_dipole_Y[1] == Approx(-0.0002585497523));
+    CHECK(E_dipole_Y[2] == Approx(-0.0004062924688));
+
+    // Test forces
+    CHECK(potY.dipole_dipole_force(muA, muB, cutoff * rh).norm() == Approx(0.0));
+    Point F_dipoledipole_Y = potY.dipole_dipole_force(muA, muB, r);
+    CHECK(F_dipoledipole_Y[0] == Approx(0.002987655338));
+    CHECK(F_dipoledipole_Y[1] == Approx(-0.005360251621));
+    CHECK(F_dipoledipole_Y[2] == Approx(-0.003081497308));
 }
 
 #endif
