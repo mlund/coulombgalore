@@ -3,6 +3,7 @@
 #include <string>
 #include <limits>
 #include <cmath>
+#include <iostream>
 #include <Eigen/Core>
 
 namespace CoulombGalore {
@@ -23,6 +24,23 @@ TEST_CASE("[Faunus] Factorial") {
     CHECK(factorial(2) == 2);
     CHECK(factorial(3) == 6);
     CHECK(factorial(10) == 3628800);
+}
+#endif
+
+constexpr unsigned int binomial(unsigned int n, unsigned int k) { return factorial( n ) / factorial( k ) / factorial( n - k ); }
+#ifdef DOCTEST_LIBRARY_INCLUDED
+TEST_CASE("[Faunus] Binomial") {
+    CHECK(binomial(3,2) == 3);
+    CHECK(binomial(5,2) == 10);
+    CHECK(binomial(8,3) == 56);
+    CHECK(binomial(9,7) == 36);
+    CHECK(binomial(5,0) == 1);
+    CHECK(binomial(12,1) == 12);
+    CHECK(binomial(11,11) == 1);
+    CHECK(binomial(2,0) == 1);
+    CHECK(binomial(3,1) == 3);
+    CHECK(binomial(4,2) == 6);
+    CHECK(binomial(5,3) == 10);
 }
 #endif
 
@@ -50,10 +68,10 @@ inline double qPochhammerSymbol(double q, int l = 0, int P = 300) {
     for(int n = 1; n < P + 1; n++) {
         double val = 0.0;
         for(int k = 1; k < n + l + 1; k++)
-            val += pow( q , k - 1 );
+            val += std::pow( q , k - 1 );
         Ct *= val;
     }
-    double Dt = pow( 1.0 - q , P ); // (1-q)^P
+    double Dt = std::pow( 1.0 - q , P ); // (1-q)^P
     return ( Ct * Dt );
 }
 
@@ -65,7 +83,7 @@ inline double qPochhammerSymbolDerivative(double q, int l = 0, int P = 300) {
     for(int n = 1; n < P + 1; n++) {
         double val = 0.0;
         for(int k = 1; k < n + l + 1; k++)
-            val += pow( q , k - 1 );
+            val += std::pow( q , k - 1 );
         Ct *= val;
     }
     double dCt = 0.0; // evaluates to derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
@@ -73,16 +91,16 @@ inline double qPochhammerSymbolDerivative(double q, int l = 0, int P = 300) {
         double nom = 0.0;
         double denom = 1.0;
         for(int k = 2; k < n + l + 1; k++) {
-            nom += ( k - 1 ) * pow( q , k - 2 );
-            denom += pow( q , k - 1 );
+            nom += ( k - 1 ) * std::pow( q , k - 2 );
+            denom += std::pow( q , k - 1 );
         }
         dCt += nom / denom;
     }
     dCt *= Ct;
-    double Dt = pow( 1.0 - q , P ); // (1-q)^P
+    double Dt = std::pow( 1.0 - q , P ); // (1-q)^P
     double dDt = 0.0;
     if(P > 0)
-        dDt = -P * pow( 1 - q , P - 1 ); // derivative of (1-q)^P
+        dDt = -P * std::pow( 1 - q , P - 1 ); // derivative of (1-q)^P
     return ( Ct * dDt + dCt * Dt );
 }
 
@@ -96,32 +114,32 @@ inline double qPochhammerSymbolSecondDerivative(double q, int l = 0, int P = 300
     for(int n = 1; n < P + 1; n++) {
         double tmp = 0.0;
         for(int k = 1; k < n + l + 1; k++)
-            tmp += pow( q , k - 1 );
+            tmp += std::pow( q , k - 1 );
         Ct *= tmp;
         double nom = 0.0;
         double denom = 1.0;
         for(int k = 2; k < n + l + 1; k++) {
-            nom += ( k - 1 ) * pow( q , k - 2 );
-            denom += pow( q , k - 1 );
+            nom += ( k - 1 ) * std::pow( q , k - 2 );
+            denom += std::pow( q , k - 1 );
         }
         DS += nom / denom;
         double diffNom = 0.0;
         double diffDenom = 1.0;
         for(int k = 3; k < n + l + 1; k++) {
-            diffNom += ( k - 1 ) * ( k - 2 ) * pow( q , k - 3 );
-            diffDenom += ( k - 1) * pow( q , k - 2 );
+            diffNom += ( k - 1 ) * ( k - 2 ) * std::pow( q , k - 3 );
+            diffDenom += ( k - 1) * std::pow( q , k - 2 );
         }
         dDS += ( diffNom * denom - nom * diffDenom ) / denom / denom;
     }
     double dCt = Ct * DS; // derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
     double ddCt = dCt * DS + Ct * dDS; // second derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
-    double Dt = pow( 1.0 - q , P ); // (1-q)^P
+    double Dt = std::pow( 1.0 - q , P ); // (1-q)^P
     double dDt = 0.0;
     if(P > 0)
-        dDt = -P * pow( 1 - q , P - 1 ); // derivative of (1-q)^P
+        dDt = -P * std::pow( 1 - q , P - 1 ); // derivative of (1-q)^P
     double ddDt = 0.0;
     if(P > 1)
-        ddDt = P * ( P - 1 ) * pow( 1 - q , P - 2 ); // second derivative of (1-q)^P
+        ddDt = P * ( P - 1 ) * std::pow( 1 - q , P - 2 ); // second derivative of (1-q)^P
     return (Ct*ddDt + 2*dCt*dDt + ddCt*Dt);
 }
 
@@ -136,13 +154,13 @@ inline double qPochhammerSymbolThirdDerivative(double q, int l = 0, int P = 300)
     for(int n = 1; n < P + 1; n++) {
         double tmp = 0.0;
         for(int k = 1; k < n + l + 1; k++)
-            tmp += pow( q , k - 1 );
+            tmp += std::pow( q , k - 1 );
         Ct *= tmp;
         double f = 0.0;
         double g = 1.0;
         for(int k = 2; k < n + l + 1; k++) {
-            f += ( k - 1 ) * pow( q , k - 2 );
-            g += pow( q , k - 1 );
+            f += ( k - 1 ) * std::pow( q , k - 2 );
+            g += std::pow( q , k - 1 );
         }
         DS += f / g;
         double df = 0.0;
@@ -150,8 +168,8 @@ inline double qPochhammerSymbolThirdDerivative(double q, int l = 0, int P = 300)
         if( n + l > 1)
             dg = 1.0;
         for(int k = 3; k < n + l + 1; k++) {
-            df += ( k - 1 ) * ( k - 2 ) * pow( q , k - 3 );
-            dg += ( k - 1) * pow( q , k - 2 );
+            df += ( k - 1 ) * ( k - 2 ) * std::pow( q , k - 3 );
+            dg += ( k - 1) * std::pow( q , k - 2 );
         }
         dDS += ( df * g - f * dg ) / g / g;
         double ddf = 0.0;
@@ -159,48 +177,43 @@ inline double qPochhammerSymbolThirdDerivative(double q, int l = 0, int P = 300)
         if( n + l > 2)
             ddg = 2.0;
         for(int k = 4; k < n + l + 1; k++) {
-            ddf += ( k - 1 ) * ( k - 2 ) * ( k - 3 ) * pow( q , k - 4 );
-            ddg += ( k - 1) * ( k - 2 ) * pow( q , k - 3 );
+            ddf += ( k - 1 ) * ( k - 2 ) * ( k - 3 ) * std::pow( q , k - 4 );
+            ddg += ( k - 1) * ( k - 2 ) * std::pow( q , k - 3 );
         }
         ddDS += ( ddf * g * g - 2.0 * df * dg * g + 2.0 * f * dg*dg - f * ddg * g ) / g / g / g;
     }
     double dCt = Ct * DS; // derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
     double ddCt = dCt * DS + Ct * dDS; // second derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
     double dddCt = ddCt * DS + 2.0*dCt*dDS + Ct * ddDS; // third derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
-    double Dt = pow( 1.0 - q , P ); // (1-q)^P
+    double Dt = std::pow( 1.0 - q , P ); // (1-q)^P
     double dDt = 0.0;
     if(P > 0)
-        dDt = -P * pow( 1 - q , P - 1 ); // derivative of (1-q)^P
+        dDt = -P * std::pow( 1 - q , P - 1 ); // derivative of (1-q)^P
     double ddDt = 0.0;
     if(P > 1)
-        ddDt = P * ( P - 1 ) * pow( 1 - q , P - 2 ); // second derivative of (1-q)^P
+        ddDt = P * ( P - 1 ) * std::pow( 1 - q , P - 2 ); // second derivative of (1-q)^P
     double dddDt = 0.0;
     if(P > 2)
-        dddDt = -P * ( P - 1 ) * ( P - 2 ) * pow( 1 - q , P - 3 ); // third derivative of (1-q)^P
+        dddDt = -P * ( P - 1 ) * ( P - 2 ) * std::pow( 1 - q , P - 3 ); // third derivative of (1-q)^P
     return ( dddCt*Dt + 3.0*ddCt*dDt + 3*dCt*ddDt + Ct*dddDt );
 }
 
 #ifdef DOCTEST_LIBRARY_INCLUDED
 TEST_CASE("qPochhammerSymbol") {
     using doctest::Approx;
-    double q = 0.5;
-    CHECK(qPochhammerSymbol(q, 0, 0) == 1);
+    CHECK(qPochhammerSymbol(0.5, 0, 0) == 1);
     CHECK(qPochhammerSymbol(0, 0, 1) == 1);
     CHECK(qPochhammerSymbol(1, 0, 1) == 0);
     CHECK(qPochhammerSymbol(1, 1, 2) == 0);
-
     CHECK(qPochhammerSymbol(0.75, 0, 2) == Approx(0.109375));
     CHECK(qPochhammerSymbol(2.0/3.0, 2, 5) == Approx(0.4211104676));
     CHECK(qPochhammerSymbol(0.125, 1, 1) == Approx(0.984375));
-
     CHECK(qPochhammerSymbolDerivative(0.75, 0, 2) == Approx(-0.8125));
     CHECK(qPochhammerSymbolDerivative(2.0/3.0, 2, 5) == Approx(-2.538458169));
     CHECK(qPochhammerSymbolDerivative(0.125, 1, 1) == Approx(-0.25));
-
     CHECK(qPochhammerSymbolSecondDerivative(0.75, 0, 2) == Approx(2.5));
     CHECK(qPochhammerSymbolSecondDerivative(2.0/3.0, 2, 5) == Approx(-1.444601767));
     CHECK(qPochhammerSymbolSecondDerivative(0.125, 1, 1) == Approx(-2.0));
-
     CHECK(qPochhammerSymbolThirdDerivative(0.75, 0, 2) == Approx(6.0));
     CHECK(qPochhammerSymbolThirdDerivative(2.0/3.0, 2, 5) == Approx(92.48631425));
     CHECK(qPochhammerSymbolThirdDerivative(0.125, 1, 1) == Approx(0.0));
@@ -598,7 +611,6 @@ TEST_CASE("[CoulombGalore] plain") {
     Point rh = {1, 0, 0};  // normalized distance vector
 
     PairPotential<Plain> pot;
-
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(1.0));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(0.0));
@@ -753,17 +765,9 @@ struct Ewald : public SchemeBase {
 TEST_CASE("[CoulombGalore] Ewald real-space") {
     using doctest::Approx;
     double cutoff = 29.0;  // cutoff distance
-    double alpha = 0.1;
+    double alpha = 0.1; // damping-parameter
     double eps_sur = infty;
-    double zA = 2.0; // charge
-    double zB = 3.0; // charge
-    Point muA = {19, 7, 11};  // dipole moment
-    Point muB = {13, 17, 5};  // dipole moment
-    Point r = {23, 0, 0};  // distance vector
-    Point rh = {1, 0, 0};  // normalized distance vector
-
     PairPotential<Ewald> pot(cutoff,alpha,eps_sur);
-
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.04030497436));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.399713585));
@@ -812,16 +816,8 @@ struct Wolf : public SchemeBase {
 TEST_CASE("[CoulombGalore] Wolf") {
     using doctest::Approx;
     double cutoff = 29.0;  // cutoff distance
-    double alpha = 0.1;
-    double zA = 2.0; // charge
-    double zB = 3.0; // charge
-    Point muA = {19, 7, 11};  // dipole moment
-    Point muB = {13, 17, 5};  // dipole moment
-    Point r = {23, 0, 0};  // distance vector
-    Point rh = {1, 0, 0};  // normalized distance vector
-
+    double alpha = 0.1; // damping-parameter
     PairPotential<Wolf> pot(cutoff,alpha);
-
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.04028442542));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.3997546829));
@@ -867,26 +863,17 @@ struct qPotential : public SchemeBase {
 TEST_CASE("[CoulombGalore] qPotential") {
     using doctest::Approx;
     double cutoff = 29.0;  // cutoff distance
-    double zA = 2.0; // charge
-    double zB = 3.0; // charge
-    Point muA = {19, 7, 11};  // dipole moment
-    Point muB = {13, 17, 5};  // dipole moment
-    Point r = {23, 0, 0};  // distance vector
-    Point rh = {1, 0, 0};  // normalized distance vector
-
-    PairPotential<qPotential> pot(cutoff,4);
-
+    int order = 4; // number of higher order moments to cancel - 1
+    PairPotential<qPotential> pot(cutoff,order);
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.3076171875));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-1.453125));
     CHECK(pot.short_range_function_second_derivative(0.5) == Approx(1.9140625));
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(17.25));
-
     CHECK(pot.short_range_function(1.0) == Approx(0.0));
     CHECK(pot.short_range_function_derivative(1.0) == Approx(0.0));
     CHECK(pot.short_range_function_second_derivative(1.0) == Approx(0.0));
     CHECK(pot.short_range_function_third_derivative(1.0) == Approx(0.0));
-
     CHECK(pot.short_range_function(0.0) == Approx(1.0));
     CHECK(pot.short_range_function_derivative(0.0) == Approx(-1.0));
     CHECK(pot.short_range_function_second_derivative(0.0) == Approx(-2.0));
@@ -898,16 +885,41 @@ TEST_CASE("[CoulombGalore] qPotential") {
 // -------------- Poisson ---------------
 
 /**
- * @brief Poisson approximation
- * @note By using the parameters 'C=4' and 'D=3' this equals the 'Fanourgakis' approach
+ * @brief Poisson scheme
+ *
+ * A general scheme which pending two parameters `C` and `D` can model several different pair-potentials.
+ *
+ *  Type            | `C` | `D` | Reference / Comment
+ *  --------------- | --- | --- | ----------------------
+ *  `plain`         |  1  | -1  | Plain Coulomb
+ *  `wolf`          |  1  |  0  | Undamped Wolf, DOI: 10.1063/1.478738
+ *  `fennel`        |  1  |  1  | Levitt ( or undamped Fennell ), DOI: 10.1016/0010-4655(95)00049-L (or 10.1063/1.2206581)
+ *  `kale`          |  1  |  2  | Kale, DOI: 10.1021/ct200392u
+ *  `mccann`        |  1  |  3  | McCann, DOI: 10.1021/ct300961
+ *  `fukuda`        |  2  |  1  | Undamped Fukuda, DOI: 10.1063/1.3582791
+ *  `markland`      |  2  |  2  | Markland, DOI: 10.1016/j.cplett.2008.09.019
+ *  `stenqvist`     |  3  |  3  | Stenqvist, DOI: 10.1088/1367-2630/ab1ec1
+ *  `fanourgakis`   |  4  |  3  | Fanourgakis, DOI: 10.1063/1.3216520
+ *
+ *  The following keywords are required:
+ *
+ *  Keyword       |  Description
+ *  ------------- |  -------------------------------------------
+ *  `C`           |  Type of splitting function as defined above
+ *  `D`           |  Type of splitting function as defined above
+ *  `cutoff`      |  Spherical cutoff in angstroms
+ *
+ *  More info:
+ *
+ *  - http://dx.doi.org/10.1088/1367-2630/ab1ec1
  */
 struct Poisson : public SchemeBase {
-    unsigned int C, D;
+    signed int C, D;
 
-    inline Poisson(double cutoff, unsigned int C, unsigned int D)
+    inline Poisson(double cutoff, signed int C, signed int D)
         : SchemeBase(TruncationScheme::poisson, cutoff), C(C), D(D) {
-        if ((C < 1) or (D < 1))
-            throw std::runtime_error("`C` and `D` must be larger than zero");
+        if ( ( C < 1 ) || ( D < -1 ) )
+            throw std::runtime_error("`C` must be larger than zero and `D` must be larger or equal to negative one");
         name = "poisson";
         doi = "10.1088/1367-2630/ab1ec1";
         double a1 = -double(C + D) / double(C);
@@ -916,11 +928,21 @@ struct Poisson : public SchemeBase {
     }
     inline double short_range_function(double q) const override {
         double tmp = 0;
-        for (unsigned int c = 0; c < C; c++)
-            tmp += double(factorial(D - 1 + c)) / double(factorial(D - 1)) / double(factorial(c)) * double(C - c) /
-                   double(C) * std::pow(q, c);
-        return std::pow(1 - q, D + 1) * tmp;
+        for (signed int c = 0; c < C; c++)
+            tmp += double( binomial( D - 1 + c , c ) ) * double( C - c ) / double(C) * std::pow( q , double( c ) );
+        return std::pow(1.0 - q, double( D + 1 )) * tmp;
     }
+    inline double short_range_function_derivative(double q) const {
+        double tmp1 = 1.0;
+	double tmp2 = 0.0;
+        for (signed int c = 1; c < C; c++) {
+            tmp1 += double( binomial( D - 1 + c , c ) ) * double( C - c ) / double(C) * std::pow( q , double( c ) );
+	    tmp2 += double( binomial( D - 1 + c , c ) ) * double( C - c ) / double(C) * double( c ) * std::pow( q , double( c ) - 1.0 );
+	}
+        return ( -double(D + 1) * pow( 1.0 - q , double( D ) ) * tmp1 + pow( 1.0 - q , double( D + 1 ) ) * tmp2 );
+    }
+    inline double short_range_function_second_derivative(double q) const { return double( binomial( C + D , C ) * D ) * std::pow( 1.0 - q , double( D ) - 1.0 ) * std::pow( q , double( C ) - 1.0 ); };
+    inline double short_range_function_third_derivative(double q) const { return double( binomial( C + D , C ) * D ) * std::pow( 1.0 - q , double( D ) - 2.0 ) * std::pow( q , double( C ) - 2.0 ) * ( ( 2.0 - double(C + D) ) * q +  double( C ) - 1.0 ); };
 
 #ifdef NLOHMANN_JSON_HPP
   private:
@@ -931,8 +953,98 @@ struct Poisson : public SchemeBase {
     inline void _to_json(nlohmann::json &j) const override { j = {{"C", C}, {"D", D}}; }
 #endif
 };
+
 #ifdef DOCTEST_LIBRARY_INCLUDED
-TEST_CASE("[CoulombGalore] Poisson") {}
+
+TEST_CASE("[CoulombGalore] Poisson") {
+    using doctest::Approx;
+    signed C = 3; // number of cancelled derivatives at origin -2 (starting from second derivative)
+    signed D = 3; // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
+    double cutoff = 29.0;  // cutoff distance
+    PairPotential<Poisson> pot33(cutoff,C,D);
+
+    // Test short-ranged function
+    CHECK(pot33.short_range_function(0.5) == Approx(0.15625));// 0.15625
+    CHECK(pot33.short_range_function_derivative(0.5) == Approx(-1.0));
+    CHECK(pot33.short_range_function_second_derivative(0.5) == Approx(3.75));
+    CHECK(pot33.short_range_function_third_derivative(0.5) == Approx(0.0));
+    CHECK(pot33.short_range_function_third_derivative(0.6) == Approx(-5.76));
+
+    CHECK(pot33.short_range_function(1.0) == Approx(0.0));
+    CHECK(pot33.short_range_function_derivative(1.0) == Approx(0.0));
+    CHECK(pot33.short_range_function_second_derivative(1.0) == Approx(0.0));
+    CHECK(pot33.short_range_function_third_derivative(1.0) == Approx(0.0));
+
+    CHECK(pot33.short_range_function(0.0) == Approx(1.0));
+    CHECK(pot33.short_range_function_derivative(0.0) == Approx(-2.0));
+    CHECK(pot33.short_range_function_second_derivative(0.0) == Approx(0.0));
+    CHECK(pot33.short_range_function_third_derivative(0.0) == Approx(0.0));
+
+    C = 4; // number of cancelled derivatives at origin -2 (starting from second derivative)
+    D = 3; // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
+    double zA = 2.0; // charge
+    double zB = 3.0; // charge
+    Point muA = {19, 7, 11};  // dipole moment
+    Point muB = {13, 17, 5};  // dipole moment
+    Point r = {23, 0, 0};  // distance vector
+    Point rh = {1, 0, 0};  // normalized distance vector
+
+    PairPotential<Poisson> pot43(cutoff,C,D);
+
+    // Test short-ranged function
+    CHECK(pot43.short_range_function(0.5) == Approx(0.19921875));
+    CHECK(pot43.short_range_function_derivative(0.5) == Approx(-1.1484375));
+    CHECK(pot43.short_range_function_second_derivative(0.5) == Approx(3.28125));
+    CHECK(pot43.short_range_function_third_derivative(0.5) == Approx(6.5625));
+
+    // Test potentials
+    CHECK(pot43.ion_potential(zA, cutoff) == Approx(0.0));
+    CHECK(pot43.ion_potential(zA, r.norm()) == Approx(0.0009430652121));
+
+    CHECK(pot43.dipole_potential(muA, cutoff * rh) == Approx(0.0));
+    CHECK(pot43.dipole_potential(muA, r) == Approx(0.005750206554));
+
+    // Test fields
+    CHECK(pot43.ion_field(zA, cutoff * rh).norm() == Approx(0.0));
+    Point E_ion = pot43.ion_field(zA, r);
+    CHECK(E_ion[0] == Approx(0.0006052849004));
+    CHECK(E_ion.norm() == Approx(0.0006052849004));
+
+    CHECK(pot43.dipole_field(muA, cutoff * rh).norm() == Approx(0.0));
+    Point E_dipole = pot43.dipole_field(muA, r);
+    CHECK(E_dipole[0] == Approx(0.002702513754));
+    CHECK(E_dipole[1] == Approx(-0.00009210857180));
+    CHECK(E_dipole[2] == Approx(-0.0001447420414));
+
+    // Test energies
+    CHECK(pot43.ion_ion_energy(zA, zB, cutoff) == Approx(0.0));
+    CHECK(pot43.ion_ion_energy(zA, zB, r.norm()) == Approx(0.002829195636));
+
+    CHECK(pot43.ion_dipole_energy(zA, muB, cutoff * rh) == Approx(0.0));
+    CHECK(pot43.ion_dipole_energy(zA, muB, r) == Approx(-0.007868703705));
+
+    CHECK(pot43.dipole_dipole_energy(muA, muB, cutoff * rh) == Approx(0.0));
+    CHECK(pot43.dipole_dipole_energy(muA, muB, r) == Approx(-0.03284312288));
+
+    // Test forces
+    CHECK(pot43.ion_ion_force(zA, zB, cutoff * rh).norm() == Approx(0.0));
+    Point F_ionion = pot43.ion_ion_force(zA, zB, r);
+    CHECK(F_ionion[0] == Approx(0.001815854701));
+    CHECK(F_ionion.norm() == Approx(0.001815854701));
+
+    CHECK(pot43.ion_dipole_force(zB, muA, cutoff * rh).norm() == Approx(0.0));
+    Point F_iondipole = pot43.ion_dipole_force(zB, muA, r);
+    CHECK(F_iondipole[0] == Approx(0.008107541263));
+    CHECK(F_iondipole[1] == Approx(-0.0002763257154));
+    CHECK(F_iondipole[2] == Approx(-0.0004342261242));
+
+    CHECK(pot43.dipole_dipole_force(muA, muB, cutoff * rh).norm() == Approx(0.0));
+    Point F_dipoledipole = pot43.dipole_dipole_force(muA, muB, r);
+    CHECK(F_dipoledipole[0] == Approx(0.009216400961));
+    CHECK(F_dipoledipole[1] == Approx(-0.002797126801));
+    CHECK(F_dipoledipole[2] == Approx(-0.001608010094));
+}
+
 #endif
 
 // -------------- Fanourgakis ---------------
@@ -968,67 +1080,12 @@ struct Fanourgakis : public SchemeBase {
 TEST_CASE("[CoulombGalore] Fanourgakis") {
     using doctest::Approx;
     double cutoff = 29.0;  // cutoff distance
-    double zA = 2.0; // charge
-    double zB = 3.0; // charge
-    Point muA = {19, 7, 11};  // dipole moment
-    Point muB = {13, 17, 5};  // dipole moment
-    Point r = {23, 0, 0};  // distance vector
-    Point rh = {1, 0, 0};  // normalized distance vector
-
     PairPotential<Fanourgakis> pot(cutoff);
-
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.1992187500));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-1.1484375));
     CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.28125));
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(6.5625));
-
-    // Test potentials
-    CHECK(pot.ion_potential(zA, cutoff) == Approx(0.0));
-    CHECK(pot.ion_potential(zA, r.norm()) == Approx(0.0009430652121));
-
-    CHECK(pot.dipole_potential(muA, cutoff * rh) == Approx(0.0));
-    CHECK(pot.dipole_potential(muA, r) == Approx(0.005750206554));
-
-    // Test fields
-    CHECK(pot.ion_field(zA, cutoff * rh).norm() == Approx(0.0));
-    Point E_ion = pot.ion_field(zA, r);
-    CHECK(E_ion[0] == Approx(0.0006052849004));
-    CHECK(E_ion.norm() == Approx(0.0006052849004));
-
-    CHECK(pot.dipole_field(muA, cutoff * rh).norm() == Approx(0.0));
-    Point E_dipole = pot.dipole_field(muA, r);
-    CHECK(E_dipole[0] == Approx(0.002702513754));
-    CHECK(E_dipole[1] == Approx(-0.00009210857180));
-    CHECK(E_dipole[2] == Approx(-0.0001447420414));
-
-    // Test energies
-    CHECK(pot.ion_ion_energy(zA, zB, cutoff) == Approx(0.0));
-    CHECK(pot.ion_ion_energy(zA, zB, r.norm()) == Approx(0.002829195636));
-
-    CHECK(pot.ion_dipole_energy(zA, muB, cutoff * rh) == Approx(0.0));
-    CHECK(pot.ion_dipole_energy(zA, muB, r) == Approx(-0.007868703705));
-
-    CHECK(pot.dipole_dipole_energy(muA, muB, cutoff * rh) == Approx(0.0));
-    CHECK(pot.dipole_dipole_energy(muA, muB, r) == Approx(-0.03284312288));
-
-    // Test forces
-    CHECK(pot.ion_ion_force(zA, zB, cutoff * rh).norm() == Approx(0.0));
-    Point F_ionion = pot.ion_ion_force(zA, zB, r);
-    CHECK(F_ionion[0] == Approx(0.001815854701));
-    CHECK(F_ionion.norm() == Approx(0.001815854701));
-
-    CHECK(pot.ion_dipole_force(zB, muA, cutoff * rh).norm() == Approx(0.0));
-    Point F_iondipole = pot.ion_dipole_force(zB, muA, r);
-    CHECK(F_iondipole[0] == Approx(0.008107541263));
-    CHECK(F_iondipole[1] == Approx(-0.0002763257154));
-    CHECK(F_iondipole[2] == Approx(-0.0004342261242));
-
-    CHECK(pot.dipole_dipole_force(muA, muB, cutoff * rh).norm() == Approx(0.0));
-    Point F_dipoledipole = pot.dipole_dipole_force(muA, muB, r);
-    CHECK(F_dipoledipole[0] == Approx(0.009216400961));
-    CHECK(F_dipoledipole[1] == Approx(-0.002797126801));
-    CHECK(F_dipoledipole[2] == Approx(-0.001608010094));
 }
 #endif
 
