@@ -127,7 +127,6 @@ inline double qPochhammerSymbolSecondDerivative(double q, int l = 0, int P = 300
 
 /**
  * @brief Gives the third derivative of the q-Pochhammer Symbol
- * @warning Needs to be fixed for q=0 and q=1
  */
 inline double qPochhammerSymbolThirdDerivative(double q, int l = 0, int P = 300) {
     double Ct = 1.0; // evaluates to \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
