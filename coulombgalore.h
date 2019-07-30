@@ -55,17 +55,6 @@ inline double qPochhammerSymbol(double q, int l = 0, int P = 300) {
     }
     double Dt = pow( 1.0 - q , P ); // (1-q)^P
     return ( Ct * Dt );
-
-  /*
-    // Alternative form, maybe faster than above...
-    double qPS = 1.0;
-    double qln = std::pow(q, l+1); // a * q^{n-1} = q^{l+n}
-    for (int n = 1; n < P + 1; n++) {
-        qPS *= ( 1.0 - qln );
-        qln *= q;
-    }
-    return qPS;
-    */
 }
 
 /**
@@ -141,28 +130,55 @@ inline double qPochhammerSymbolSecondDerivative(double q, int l = 0, int P = 300
  * @warning Needs to be fixed for q=0 and q=1
  */
 inline double qPochhammerSymbolThirdDerivative(double q, int l = 0, int P = 300) {
-    double qPS = 1.0;    // will evaluate to q-Pochhammer Symbol
-    double dqPS = 0.0;   // will evaluate to derivative of the q-Pochhammer Symbol
-    double ddqPS = 0.0;  // will evaluate to the second derivative of the q-Pochhammer Symbol
-    double dddqPS = 0.0; // will evaluate to the third derivative of the q-Pochhammer Symbol
-    double qln = std::pow(q, l+1); // a * q^{n-1} = q^{l+n}
-    double tmp1 = 0.0;
-    double tmp2 = 0.0;
-    for (int n = 1; n < P + 1; n++) {
-      double tmp = ( l + n ) / ( 1 - qln );
-        qPS *= ( 1.0 - qln );
-        dqPS -= tmp * qln;
-        ddqPS -= ( qln + l + n - 1.0 ) * tmp * qln / ( 1.0 - qln );
-        tmp1 += tmp * tmp * qln;
-        tmp2 += tmp * tmp * tmp * qln * (1.0 + qln);
-        qln *= q;
+    double Ct = 1.0; // evaluates to \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
+    double DS = 0.0;
+    double dDS = 0.0;
+    double ddDS = 0.0;
+    for(int n = 1; n < P + 1; n++) {
+        double tmp = 0.0;
+        for(int k = 1; k < n + l + 1; k++)
+            tmp += pow( q , k - 1 );
+        Ct *= tmp;
+        double f = 0.0;
+        double g = 1.0;
+        for(int k = 2; k < n + l + 1; k++) {
+            f += ( k - 1 ) * pow( q , k - 2 );
+            g += pow( q , k - 1 );
+        }
+        DS += f / g;
+        double df = 0.0;
+        double dg = 0.0;
+        if( n + l > 1)
+            dg = 1.0;
+        for(int k = 3; k < n + l + 1; k++) {
+            df += ( k - 1 ) * ( k - 2 ) * pow( q , k - 3 );
+            dg += ( k - 1) * pow( q , k - 2 );
+        }
+        dDS += ( df * g - f * dg ) / g / g;
+        double ddf = 0.0;
+        double ddg = 0.0;
+        if( n + l > 2)
+            ddg = 2.0;
+        for(int k = 4; k < n + l + 1; k++) {
+            ddf += ( k - 1 ) * ( k - 2 ) * ( k - 3 ) * pow( q , k - 4 );
+            ddg += ( k - 1) * ( k - 2 ) * pow( q , k - 3 );
+        }
+        ddDS += ( ddf * g * g - 2.0 * df * dg * g + 2.0 * f * dg*dg - f * ddg * g ) / g / g / g;
     }
-    double tmp3 = 2.0 / q / q / q * tmp1;
-    double tmp4 = 1.0 / q / q / q *( tmp1 - tmp2 );
-    dqPS = dqPS / q * qPS;
-    ddqPS = ( ddqPS * qPS / q / q + dqPS * dqPS / qPS );
-    dddqPS = ( 3.0*ddqPS*dqPS / qPS - 2.0*pow(dqPS/qPS,3.0) * qPS + tmp4 * qPS + tmp3 * qPS + 2.0*dqPS / q / q );
-    return dddqPS;
+    double dCt = Ct * DS; // derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
+    double ddCt = dCt * DS + Ct * dDS; // second derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
+    double dddCt = ddCt * DS + 2.0*dCt*dDS + Ct * ddDS; // third derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
+    double Dt = pow( 1.0 - q , P ); // (1-q)^P
+    double dDt = 0.0;
+    if(P > 0)
+        dDt = -P * pow( 1 - q , P - 1 ); // derivative of (1-q)^P
+    double ddDt = 0.0;
+    if(P > 1)
+        ddDt = P * ( P - 1 ) * pow( 1 - q , P - 2 ); // second derivative of (1-q)^P
+    double dddDt = 0.0;
+    if(P > 2)
+        dddDt = -P * ( P - 1 ) * ( P - 2 ) * pow( 1 - q , P - 3 ); // third derivative of (1-q)^P
+    return ( dddCt*Dt + 3.0*ddCt*dDt + 3*dCt*ddDt + Ct*dddDt );
 }
 
 #ifdef DOCTEST_LIBRARY_INCLUDED
@@ -464,7 +480,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @f[
      *     {\bf F}(z, \boldsymbol{\mu}, {\bf r}) = z {\bf E}(\boldsymbol{\mu}, {\bf r})
      * @f]
-     * where @f[ {\bf E}({\bf \mu}, {\bf r}) @f] is the field from the dipole at the location of the ion.
+     * where @f[ {\bf E}(\boldsymbol{\mu}, {\bf r}) @f] is the field from the dipole at the location of the ion.
      */
     inline Point ion_dipole_force(double z, Point mu, Point r) {
         return z * dipole_field(mu,r);
@@ -870,12 +886,12 @@ TEST_CASE("[CoulombGalore] qPotential") {
     CHECK(pot.short_range_function(1.0) == Approx(0.0));
     CHECK(pot.short_range_function_derivative(1.0) == Approx(0.0));
     CHECK(pot.short_range_function_second_derivative(1.0) == Approx(0.0));
-    //CHECK(pot.short_range_function_third_derivative(1.0) == Approx(0.0));
+    CHECK(pot.short_range_function_third_derivative(1.0) == Approx(0.0));
 
     CHECK(pot.short_range_function(0.0) == Approx(1.0));
     CHECK(pot.short_range_function_derivative(0.0) == Approx(-1.0));
     CHECK(pot.short_range_function_second_derivative(0.0) == Approx(-2.0));
-    //CHECK(pot.short_range_function_third_derivative(0.0) == Approx(0.0));
+    CHECK(pot.short_range_function_third_derivative(0.0) == Approx(0.0));
 }
 
 #endif
@@ -887,8 +903,7 @@ TEST_CASE("[CoulombGalore] qPotential") {
  * @note By using the parameters 'C=4' and 'D=3' this equals the 'Fanourgakis' approach
  */
 struct Poisson : public SchemeBase {
-    unsigned int C;
-    unsigned int D;
+    unsigned int C, D;
 
     inline Poisson(double cutoff, unsigned int C, unsigned int D)
         : SchemeBase(TruncationScheme::poisson, cutoff), C(C), D(D) {
