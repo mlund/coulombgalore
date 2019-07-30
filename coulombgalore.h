@@ -884,39 +884,10 @@ TEST_CASE("[CoulombGalore] qPotential") {
 
 // -------------- Poisson ---------------
 
-/**
- * @brief Poisson scheme
- *
- * A general scheme which pending two parameters `C` and `D` can model several different pair-potentials.
- *
- *  Type            | `C` | `D` | Reference / Comment
- *  --------------- | --- | --- | ----------------------
- *  `plain`         |  1  | -1  | Plain Coulomb
- *  `wolf`          |  1  |  0  | Undamped Wolf, DOI: 10.1063/1.478738
- *  `fennel`        |  1  |  1  | Levitt ( or undamped Fennell ), DOI: 10.1016/0010-4655(95)00049-L (or 10.1063/1.2206581)
- *  `kale`          |  1  |  2  | Kale, DOI: 10.1021/ct200392u
- *  `mccann`        |  1  |  3  | McCann, DOI: 10.1021/ct300961
- *  `fukuda`        |  2  |  1  | Undamped Fukuda, DOI: 10.1063/1.3582791
- *  `markland`      |  2  |  2  | Markland, DOI: 10.1016/j.cplett.2008.09.019
- *  `stenqvist`     |  3  |  3  | Stenqvist, DOI: 10.1088/1367-2630/ab1ec1
- *  `fanourgakis`   |  4  |  3  | Fanourgakis, DOI: 10.1063/1.3216520
- *
- *  The following keywords are required:
- *
- *  Keyword       |  Description
- *  ------------- |  -------------------------------------------
- *  `C`           |  Number of cancelled derivatives at origin -2 (starting from second derivative)
- *  `D`           |  Number of cancelled derivatives at the cut-off (starting from zeroth derivative)
- *  `cutoff`      |  Spherical cutoff in angstroms
- *
- *  More info:
- *
- *  - http://dx.doi.org/10.1088/1367-2630/ab1ec1
- */
-struct Poisson : public SchemeBase {
+struct PoissonSimple : public SchemeBase {
     signed int C, D;
 
-    inline Poisson(double cutoff, signed int C, signed int D)
+    inline PoissonSimple(double cutoff, signed int C, signed int D)
         : SchemeBase(TruncationScheme::poisson, cutoff), C(C), D(D) {
         if ( ( C < 1 ) || ( D < -1 ) )
             throw std::runtime_error("`C` must be larger than zero and `D` must be larger or equal to negative one");
@@ -934,15 +905,147 @@ struct Poisson : public SchemeBase {
     }
     inline double short_range_function_derivative(double q) const {
         double tmp1 = 1.0;
-	double tmp2 = 0.0;
+        double tmp2 = 0.0;
         for (signed int c = 1; c < C; c++) {
             tmp1 += double( binomial( D - 1 + c , c ) ) * double( C - c ) / double(C) * std::pow( q , double( c ) );
-	    tmp2 += double( binomial( D - 1 + c , c ) ) * double( C - c ) / double(C) * double( c ) * std::pow( q , double( c ) - 1.0 );
-	}
+            tmp2 += double( binomial( D - 1 + c , c ) ) * double( C - c ) / double(C) * double( c ) * std::pow( q , double( c ) - 1.0 );
+        }
         return ( -double(D + 1) * pow( 1.0 - q , double( D ) ) * tmp1 + pow( 1.0 - q , double( D + 1 ) ) * tmp2 );
     }
     inline double short_range_function_second_derivative(double q) const { return double( binomial( C + D , C ) * D ) * std::pow( 1.0 - q , double( D ) - 1.0 ) * std::pow( q , double( C ) - 1.0 ); };
     inline double short_range_function_third_derivative(double q) const { return double( binomial( C + D , C ) * D ) * std::pow( 1.0 - q , double( D ) - 2.0 ) * std::pow( q , double( C ) - 2.0 ) * ( ( 2.0 - double(C + D) ) * q +  double( C ) - 1.0 ); };
+
+#ifdef NLOHMANN_JSON_HPP
+  private:
+    inline void _from_json(const nlohmann::json &j) override {
+        C = j.at("C").get<double>();
+        D = j.at("D").get<double>();
+    }
+    inline void _to_json(nlohmann::json &j) const override { j = {{"C", C}, {"D", D}}; }
+#endif
+};
+
+/**
+ * @brief Poisson scheme, also works for Yukawa-potential
+ *
+ * A general scheme which pending two parameters `C` and `D` can model several different pair-potentials.
+ * For infinite Debye-length the following holds:
+ *
+ *  Type            | `C` | `D` | Reference / Comment
+ *  --------------- | --- | --- | ----------------------
+ *  `plain`         |  1  | -1  | Plain Coulomb
+ *  `wolf`          |  1  |  0  | Undamped Wolf, DOI: 10.1063/1.478738
+ *  `fennel`        |  1  |  1  | Levitt ( or undamped Fennell ), DOI: 10.1016/0010-4655(95)00049-L (or 10.1063/1.2206581)
+ *  `kale`          |  1  |  2  | Kale, DOI: 10.1021/ct200392u
+ *  `mccann`        |  1  |  3  | McCann, DOI: 10.1021/ct300961
+ *  `fukuda`        |  2  |  1  | Undamped Fukuda, DOI: 10.1063/1.3582791
+ *  `markland`      |  2  |  2  | Markland, DOI: 10.1016/j.cplett.2008.09.019
+ *  `stenqvist`     |  3  |  3  | Stenqvist, DOI: 10.1088/1367-2630/ab1ec1
+ *  `fanourgakis`   |  4  |  3  | Fanourgakis, DOI: 10.1063/1.3216520
+ *
+ *  The following keywords are required:
+ *
+ *  Keyword       |  Description
+ *  ------------- |  -------------------------------------------
+ *  `cutoff`      |  Spherical cutoff in angstroms
+ *  `C`           |  Number of cancelled derivatives at origin -2 (starting from second derivative)
+ *  `D`           |  Number of cancelled derivatives at the cut-off (starting from zeroth derivative)
+ *  `kappa^{-1}`  |  Debye-length (optional)
+ *
+ *  More info:
+ *
+ *  - http://dx.doi.org/10.1088/1367-2630/ab1ec1
+ */
+struct Poisson : public SchemeBase {
+    signed int C, D;
+    double debye_length, invDebye_lengthRed;
+    bool yukawa;
+
+    inline Poisson(double cutoff, signed int C, signed int D, double debye_length=infty)
+        : SchemeBase(TruncationScheme::poisson, cutoff), C(C), D(D), debye_length(debye_length) {
+        if ( ( C < 1 ) || ( D < -1 ) )
+            throw std::runtime_error("`C` must be larger than zero and `D` must be larger or equal to negative one");
+        name = "poisson";
+        doi = "10.1088/1367-2630/ab1ec1";
+        double a1 = -double(C + D) / double(C);
+        invDebye_lengthRed = cutoff / debye_length;
+        yukawa = false;
+        if( std::fabs( invDebye_lengthRed ) > 1e-6 ) {
+            yukawa = true;
+            a1 *= -2.0 * invDebye_lengthRed / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed) );
+        }
+        self_energy_prefactor = {a1, a1};
+        T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
+    }
+    inline double short_range_function(double q) const override {
+        double tmp = 0;
+        double qp = q;
+        if( yukawa )
+            qp = ( 1.0 - std::exp( 2.0 * invDebye_lengthRed * q ) ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
+        for (signed int c = 0; c < C; c++)
+            tmp += double( binomial( D - 1 + c , c ) ) * double( C - c ) / double(C) * std::pow( qp , double( c ) );
+        return std::pow(1.0 - qp, double( D + 1 )) * tmp;
+    }
+    inline double short_range_function_derivative(double q) const {
+        double qp = q;
+        double dqpdq = 1.0;
+        if( yukawa ) {
+            qp = ( 1.0 - std::exp( 2.0 * invDebye_lengthRed * q ) ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
+            dqpdq = -2.0 * invDebye_lengthRed * std::exp( 2.0 * invDebye_lengthRed * q ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
+        }
+        double tmp1 = 1.0;
+        double tmp2 = 0.0;
+        for (signed int c = 1; c < C; c++) {
+            tmp1 += double( binomial( D - 1 + c , c ) ) * double( C - c ) / double(C) * std::pow( qp , double( c ) );
+            tmp2 += double( binomial( D - 1 + c , c ) ) * double( C - c ) / double(C) * double( c ) * std::pow( qp , double( c ) - 1.0 );
+        }
+        double dSdqp = ( -double(D + 1) * pow( 1.0 - qp , double( D ) ) * tmp1 + pow( 1.0 - qp , double( D + 1 ) ) * tmp2 );
+        return dSdqp * dqpdq;
+    }
+    inline double short_range_function_second_derivative(double q) const {
+        double qp = q;
+        double dqpdq = 1.0;
+        double d2qpdq2 = 0.0;
+        double dSdqp = 0.0;
+        if( yukawa ) {
+            qp = ( 1.0 - std::exp( 2.0 * invDebye_lengthRed * q ) ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
+            dqpdq = -2.0 * invDebye_lengthRed * std::exp( 2.0 * invDebye_lengthRed * q ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
+            d2qpdq2 = -4.0 * invDebye_lengthRed * invDebye_lengthRed * std::exp( 2.0 * invDebye_lengthRed * q ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
+            double tmp1 = 1.0;
+            double tmp2 = 0.0;
+            for (signed int c = 1; c < C; c++) {
+                tmp1 += double( binomial( D - 1 + c , c ) ) * double( C - c ) / double(C) * std::pow( qp , double( c ) );
+                tmp2 += double( binomial( D - 1 + c , c ) ) * double( C - c ) / double(C) * double( c ) * std::pow( qp , double( c ) - 1.0 );
+            }
+            dSdqp = ( -double(D + 1) * pow( 1.0 - qp , double( D ) ) * tmp1 + pow( 1.0 - qp , double( D + 1 ) ) * tmp2 );
+        }
+        double d2Sdqp2 = double( binomial( C + D , C ) * D ) * std::pow( 1.0 - qp , double( D ) - 1.0 ) * std::pow( qp , double( C ) - 1.0 );
+        return ( d2Sdqp2 * dqpdq * dqpdq + dSdqp * d2qpdq2 );
+    };
+    inline double short_range_function_third_derivative(double q) const {
+        double qp = q;
+        double dqpdq = 1.0;
+        double d2qpdq2 = 0.0;
+        double d3qpdq3 = 0.0;
+        double d2Sdqp2 = 0.0;
+        double dSdqp = 0.0;
+        if( yukawa ) {
+            qp = ( 1.0 - std::exp( 2.0 * invDebye_lengthRed * q ) ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
+            dqpdq = -2.0 * invDebye_lengthRed * std::exp( 2.0 * invDebye_lengthRed * q ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
+            d2qpdq2 = -4.0 * invDebye_lengthRed * invDebye_lengthRed * std::exp( 2.0 * invDebye_lengthRed * q ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
+            d3qpdq3 = -8.0 * invDebye_lengthRed * invDebye_lengthRed * invDebye_lengthRed * std::exp( 2.0 * invDebye_lengthRed * q ) / ( 1.0 - std::exp( 2.0 * invDebye_lengthRed ) );
+            d2Sdqp2 = double( binomial( C + D , C ) * D ) * std::pow( 1.0 - qp , double( D ) - 1.0 ) * std::pow( qp , double( C ) - 1.0 );
+            double tmp1 = 1.0;
+            double tmp2 = 0.0;
+            for (signed int c = 1; c < C; c++) {
+                tmp1 += double( binomial( D - 1 + c , c ) ) * double( C - c ) / double(C) * std::pow( qp , double( c ) );
+                tmp2 += double( binomial( D - 1 + c , c ) ) * double( C - c ) / double(C) * double( c ) * std::pow( qp , double( c ) - 1.0 );
+            }
+            dSdqp = ( -double(D + 1) * pow( 1.0 - qp , double( D ) ) * tmp1 + pow( 1.0 - qp , double( D + 1 ) ) * tmp2 );
+        }
+        double d3Sdqp3 = double( binomial( C + D , C ) * D ) * std::pow( 1.0 - qp , double( D ) - 2.0 ) * std::pow( qp , double( C ) - 2.0 ) * ( ( 2.0 - double(C + D) ) * qp +  double( C ) - 1.0 );
+        return ( d3Sdqp3 * dqpdq * dqpdq * dqpdq + 3.0*d2Sdqp2 * dqpdq * d2qpdq2 + dSdqp * d3qpdq3 );
+    };
 
 #ifdef NLOHMANN_JSON_HPP
   private:
@@ -964,7 +1067,7 @@ TEST_CASE("[CoulombGalore] Poisson") {
     PairPotential<Poisson> pot33(cutoff,C,D);
 
     // Test short-ranged function
-    CHECK(pot33.short_range_function(0.5) == Approx(0.15625));// 0.15625
+    CHECK(pot33.short_range_function(0.5) == Approx(0.15625));
     CHECK(pot33.short_range_function_derivative(0.5) == Approx(-1.0));
     CHECK(pot33.short_range_function_second_derivative(0.5) == Approx(3.75));
     CHECK(pot33.short_range_function_third_derivative(0.5) == Approx(0.0));
@@ -1043,6 +1146,18 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(F_dipoledipole[0] == Approx(0.009216400961));
     CHECK(F_dipoledipole[1] == Approx(-0.002797126801));
     CHECK(F_dipoledipole[2] == Approx(-0.001608010094));
+
+    C = 3; // number of cancelled derivatives at origin -2 (starting from second derivative)
+    D = 3; // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
+    cutoff = 29.0;  // cutoff distance
+    double kappa = 1.2*29.0;
+    PairPotential<Poisson> potY(cutoff,C,D,kappa);
+
+    // Test short-ranged function
+    CHECK(potY.short_range_function(0.5) == Approx(0.4224671954));
+    CHECK(potY.short_range_function_derivative(0.5) == Approx(-1.487744082));
+    CHECK(potY.short_range_function_second_derivative(0.5) == Approx(-0.346015678));
+    CHECK(potY.short_range_function_third_derivative(0.5) == Approx(13.64702584));
 }
 
 #endif
