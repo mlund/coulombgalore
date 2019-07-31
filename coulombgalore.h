@@ -268,7 +268,8 @@ class SchemeBase {
      *
      * where @f[ \langle M^2\rangle @f] is mean value of the system dipole moment squared,
      * @f[ \varepsilon_0 @f] is the vacuum permittivity, @f[ V @f] the volume of the system,
-     * @f[ k_B @f] the Boltzmann constant, and @f[ T @f] the temperature.
+     * @f[ k_B @f] the Boltzmann constant, @f[ T @f] the temperature, and @f[ T0 @f] the
+     * Spatial Fourier transformed modified interaction tensor.
      */
     double calc_dielectric(double M2V) { return ( M2V * T0 + 2.0 * M2V + 1.0 ) / ( M2V * T0 - M2V + 1.0 ); }
 
@@ -404,10 +405,11 @@ template <class Tscheme> class PairPotential : public Tscheme {
 	    double srf = short_range_function(q);
 	    double dsrf = short_range_function_derivative(q);
 	    double ddsrf = short_range_function_second_derivative(q);
-            Point field = ( 3.0 * mu.dot(r) * r / r2 - mu ) / r2 / r1;
-	    field *= ( srf * ( 1.0 + kappa * r1 + kappa * kappa * r2 / 3.0 ) - q * dsrf * ( 1.0 + 2.0 / 3.0 * kappa * r1 ) + q * q / 3.0 * ddsrf );
-            field += mu / r2 / r1 * ( srf * kappa * kappa * r2 - 2.0 * kappa * r1 * q * dsrf +  ddsrf * q * q ) / 3.0;
-            return field * std::exp( -kappa * r1);
+            Point fieldD = ( 3.0 * mu.dot(r) * r / r2 - mu ) / r2 / r1;
+	    fieldD *= ( srf * ( 1.0 + kappa * r1 + kappa * kappa * r2 / 3.0 ) - q * dsrf * ( 1.0 + 2.0 / 3.0 * kappa * r1 ) + q * q / 3.0 * ddsrf );
+            Point fieldI = mu / r2 / r1;
+	    fieldI *= ( srf * kappa * kappa * r2 - 2.0 * kappa * r1 * q * dsrf +  ddsrf * q * q ) / 3.0;
+            return ( fieldD + fieldI ) * std::exp( -kappa * r1);
         } else {
             return {0,0,0};
         }
@@ -672,7 +674,6 @@ TEST_CASE("[CoulombGalore] plain") {
 
     // Approximate dipoles by two charges respectively and compare to point-dipoles
     double d = 1e-3; // small distance
-
     Point r_muA_1 = muA / muA.norm() * d;     // a small distance from dipole A ( the origin )
     Point r_muA_2 = - muA / muA.norm() * d;   // a small distance from dipole B ( the origin )
     Point r_muB_1 = r + muB / muB.norm() * d; // a small distance from dipole B ( 'r' )
@@ -681,10 +682,8 @@ TEST_CASE("[CoulombGalore] plain") {
     double z_muA_2 = -muA.norm() / ( 2.0 * d ); // charge 2 of approximative dipole A
     double z_muB_1 =  muB.norm() / ( 2.0 * d ); // charge 1 of approximative dipole B
     double z_muB_2 = -muB.norm() / ( 2.0 * d ); // charge 2 of approximative dipole B
-
     Point muA_approx = r_muA_1 * z_muA_1 + r_muA_2 * z_muA_2;
     Point muB_approx = r_muB_1 * z_muB_1 + r_muB_2 * z_muB_2;
-
     Point r_z1r = r - r_muA_1; // distance from charge 1 of dipole A to 'r'
     Point r_z2r = r - r_muA_2; // distance from charge 2 of dipole A to 'r'
 
@@ -777,7 +776,7 @@ struct Ewald : public SchemeBase {
         name = "Ewald real-space";
         alphaRed = alpha*cutoff;
         alphaRed2 = alphaRed * alphaRed;
-        self_energy_prefactor = { - alphaRed / pi_sqrt, -pow(alphaRed,3) * 2.0 / 3.0 / pi_sqrt };
+        self_energy_prefactor = { - alphaRed / pi_sqrt, -alphaRed2 * alphaRed * 2.0 / 3.0 / pi_sqrt };
         if ( eps_sur < 1.0 )
             throw std::runtime_error("Dielectric constant of the surrounding medium is less than one");
         T0 = 2.0 * (eps_sur - 1.0 ) / ( 2.0 * eps_sur + 1.0 );
@@ -803,6 +802,7 @@ TEST_CASE("[CoulombGalore] Ewald real-space") {
     double alpha = 0.1; // damping-parameter
     double eps_sur = infty;
     PairPotential<Ewald> pot(cutoff,alpha,eps_sur);
+
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.04030497436));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.399713585));
@@ -853,6 +853,7 @@ TEST_CASE("[CoulombGalore] Wolf") {
     double cutoff = 29.0;  // cutoff distance
     double alpha = 0.1; // damping-parameter
     PairPotential<Wolf> pot(cutoff,alpha);
+
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.04028442542));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.3997546829));
@@ -917,10 +918,10 @@ TEST_CASE("[CoulombGalore] qPotential") {
 
 #endif
 
-// -------------- Poisson ---------------
+// -------------- Poisson --------------- Remove?!
 
 struct PoissonSimple : public SchemeBase {
-    signed int C, D;
+    signed int C, D; //!< Number of derivatives to cancel
 
     inline PoissonSimple(double cutoff, signed int C, signed int D)
         : SchemeBase(TruncationScheme::poisson, cutoff), C(C), D(D) {
@@ -982,7 +983,7 @@ struct PoissonSimple : public SchemeBase {
  *
  *  Keyword        |  Description
  *  -------------- |  -------------------------------------------
- *  `cutoff`       |  Spherical cutoff in angstroms
+ *  `cutoff`       |  Spherical cutoff
  *  `C`            |  Number of cancelled derivatives at origin -2 (starting from second derivative)
  *  `D`            |  Number of cancelled derivatives at the cut-off (starting from zeroth derivative)
  *  `debye_length` |  Debye-length (optional)
@@ -993,7 +994,7 @@ struct PoissonSimple : public SchemeBase {
  */
 struct Poisson : public SchemeBase {
     signed int C, D;                          //!< Derivative cancelling-parameters
-    double debye_length, kappaRed, kappaRed2; //!< Debye-length and reduced inverse Debye-length (optional)
+    double debye_length, kappaRed, kappaRed2; //!< Debye-length
     double yukawa_denom, binomCDC;
     bool yukawa;
 
@@ -1008,13 +1009,13 @@ struct Poisson : public SchemeBase {
         yukawa = false;
         if( std::fabs( kappaRed ) > 1e-6 ) {
             yukawa = true;
-            a1 *= -2.0 * kappaRed / ( 1.0 - std::exp( 2.0 * kappaRed) );
             kappaRed2 = kappaRed * kappaRed;
             yukawa_denom = 1.0 / ( 1.0 - std::exp( 2.0 * kappaRed ) );
+            a1 *= -2.0 * kappaRed * yukawa_denom;
         }
         binomCDC = double( binomial( C + D , C ) * D );
         self_energy_prefactor = {a1, a1};
-        T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
+        T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0); // Is this OK for Yukawa-interactions?
     }
     inline double short_range_function(double q) const override {
         double tmp = 0;
