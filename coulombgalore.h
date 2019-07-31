@@ -763,29 +763,49 @@ TEST_CASE("[CoulombGalore] plain") {
  */
 struct Ewald : public SchemeBase {
     double alpha;               //!< Damping-parameter
-    double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
+    double alphaRed, alphaRed2, alphaRed3; //!< Reduced damping-parameter, and squared
     double eps_sur;             //!< Dielectric constant of the surrounding medium
-    double debye_length;        //!< Debye-length (optional)
+    double debye_length;        //!< Debye-length
+    double kappa;               //!< Inverse Debye-length
+    double beta, beta2, beta3;  //!< Inverse ( twice Debye-length times damping-parameter )
     const double pi_sqrt = 2.0*std::sqrt(std::atan(1.0));
 
     /**
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
+     * @warning Self-energy needs to be fixed for Yukawa dipole-interactions
      */
     inline Ewald(double cutoff, double alpha, double eps_sur, double debye_length=infty) : SchemeBase(TruncationScheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur), debye_length(debye_length) {
         name = "Ewald real-space";
-        alphaRed = alpha*cutoff;
+        alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
-        self_energy_prefactor = { - alphaRed / pi_sqrt, -alphaRed2 * alphaRed * 2.0 / 3.0 / pi_sqrt };
+        alphaRed3 = alphaRed2 * alphaRed;
         if ( eps_sur < 1.0 )
             throw std::runtime_error("Dielectric constant of the surrounding medium is less than one");
         T0 = 2.0 * (eps_sur - 1.0 ) / ( 2.0 * eps_sur + 1.0 );
+        kappa = 1.0 / debye_length;
+        beta = kappa / ( 2.0 * alpha );
+        beta2 = beta * beta;
+        beta3 = beta2 * beta;
+        self_energy_prefactor = { -alphaRed / pi_sqrt * ( std::exp( -beta2 ) + pi_sqrt * beta * std::erf( beta ) ), -alphaRed3 * 2.0 / 3.0 / pi_sqrt };
     }
 
-    inline double short_range_function(double q) const override { return std::erfc(alphaRed*q); }
-    inline double short_range_function_derivative(double q) const { return -2.0 * std::exp( - alphaRed2 * q * q ) * alphaRed / pi_sqrt; }
-    inline double short_range_function_second_derivative(double q) const { return 4.0 * std::exp( - alphaRed2 * q * q ) * alphaRed2 * alphaRed * q / pi_sqrt; }
-    inline double short_range_function_third_derivative(double q) const { return -8.0 * std::exp( - alphaRed2 * q * q ) * alphaRed2 * alphaRed * ( alphaRed2 * q * q - 0.5 ) / pi_sqrt; }
+    inline double short_range_function(double q) const override { return 0.5 * ( std::erfc( alphaRed * q + beta) * std::exp( 4.0 * alphaRed * beta * q) + std::erfc( alphaRed * q - beta ) ); }
+    inline double short_range_function_derivative(double q) const {
+      double expC = std::exp( -pow( alphaRed * q - beta ,2.0) );
+      double erfcC = std::erfc( alphaRed * q + beta );
+      return ( -2.0 * alphaRed / pi_sqrt * expC + 2.0 * alphaRed * beta * erfcC * std::exp( 4.0 * alphaRed * beta * q ) );
+    }
+    inline double short_range_function_second_derivative(double q) const {
+      double expC = std::exp( -pow( alphaRed * q - beta ,2.0) );
+      double erfcC = std::erfc( alphaRed * q + beta );
+      return ( 4.0 * alphaRed2 / pi_sqrt * ( alphaRed * q - 2.0 * beta ) * expC + 8.0 * alphaRed2 * beta2 * erfcC * std::exp( 4.0 * alphaRed * beta * q ) );
+    }
+    inline double short_range_function_third_derivative(double q) const {
+      double expC = std::exp( -pow( alphaRed * q - beta ,2.0) );
+      double erfcC = std::erfc( alphaRed * q + beta );
+      return ( 4.0 * alphaRed3 / pi_sqrt * ( 1.0 - 2.0 * ( alphaRed * q - 2.0 * beta ) * ( alphaRed * q - beta ) - 4.0 * beta2 ) * expC + 32.0 * alphaRed3 * beta3 * erfcC * std::exp( 4.0 * alphaRed * beta * q ) );
+    }
 
 #ifdef NLOHMANN_JSON_HPP
   private:
@@ -808,6 +828,15 @@ TEST_CASE("[CoulombGalore] Ewald real-space") {
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.399713585));
     CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.36159125));
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
+
+    double debye_length = 23.0;
+    PairPotential<Ewald> potY(cutoff,alpha,eps_sur,debye_length);
+
+    // Test short-ranged function
+    CHECK(potY.short_range_function(0.5) == Approx(0.07306333588));
+    CHECK(potY.short_range_function_derivative(0.5) == Approx(-0.63444119));
+    CHECK(potY.short_range_function_second_derivative(0.5) == Approx(4.423133599));
+    CHECK(potY.short_range_function_third_derivative(0.5) == Approx(-19.85937171));
 }
 
 #endif
