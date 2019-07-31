@@ -773,7 +773,6 @@ struct Ewald : public SchemeBase {
     /**
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
-     * @warning Self-energy needs to be fixed for Yukawa dipole-interactions
      */
     inline Ewald(double cutoff, double alpha, double eps_sur, double debye_length=infty) : SchemeBase(TruncationScheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur), debye_length(debye_length) {
         name = "Ewald real-space";
@@ -787,7 +786,7 @@ struct Ewald : public SchemeBase {
         beta = kappa / ( 2.0 * alpha );
         beta2 = beta * beta;
         beta3 = beta2 * beta;
-        self_energy_prefactor = { -alphaRed / pi_sqrt * ( std::exp( -beta2 ) + pi_sqrt * beta * std::erf( beta ) ), -alphaRed3 * 2.0 / 3.0 / pi_sqrt };
+        self_energy_prefactor = { -alphaRed / pi_sqrt * ( std::exp( -beta2 ) + pi_sqrt * beta * std::erf( beta ) ), -alphaRed3 * 2.0 / 3.0 / pi_sqrt * ( 2.0 * pi_sqrt * beta3 * std::erfc( beta ) + ( 1.0 - 2.0 * beta2 ) * std::exp( -beta2 ) ) };
     }
 
     inline double short_range_function(double q) const override { return 0.5 * ( std::erfc( alphaRed * q + beta) * std::exp( 4.0 * alphaRed * beta * q) + std::erfc( alphaRed * q - beta ) ); }
