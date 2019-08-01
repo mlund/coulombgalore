@@ -214,7 +214,7 @@ inline constexpr double qPochhammerSymbolThirdDerivative(double q, int l = 0, in
     double dCt = Ct * DS;                                   // derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
     double ddCt = dCt * DS + Ct * dDS;                      // second derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
     double dddCt = ddCt * DS + 2.0 * dCt * dDS + Ct * ddDS; // third derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
-    double Dt = powi(1.0 - q, P);                       // (1-q)^P
+    double Dt = powi(1.0 - q, P);                           // (1-q)^P
     double dDt = 0.0;
     if (P > 0)
         dDt = -P * powi(1 - q, P - 1); // derivative of (1-q)^P
@@ -1048,8 +1048,7 @@ struct PoissonSimple : public SchemeBase {
         double tmp2 = 0.0;
         for (signed int c = 1; c < C; c++) {
             tmp1 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * powi(q, c);
-            tmp2 +=
-                double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * double(c) * powi(q, c - 1);
+            tmp2 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * double(c) * powi(q, c - 1);
         }
         return (-double(D + 1) * powi(1.0 - q, D) * tmp1 + powi(1.0 - q, D + 1) * tmp2);
     }
@@ -1144,15 +1143,16 @@ struct Poisson : public SchemeBase {
         double qp = q;
         double dqpdq = 1.0;
         if (yukawa) {
-            qp = (1.0 - std::exp(2.0 * kappaRed * q)) * yukawa_denom;
-            dqpdq = -2.0 * kappaRed * std::exp(2.0 * kappaRed * q) * yukawa_denom;
+            double exp2kq = std::exp(2.0 * kappaRed * q);
+            qp = (1.0 - exp2kq) * yukawa_denom;
+            dqpdq = -2.0 * kappaRed * exp2kq * yukawa_denom;
         }
         double tmp1 = 1.0;
         double tmp2 = 0.0;
         for (int c = 1; c < C; c++) {
-            tmp1 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * powi(qp, c);
-            tmp2 +=
-                double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * double(c) * powi(qp, c - 1);
+            double _fact = double(binomial(D - 1 + c, c)) * double(C - c) / double(C);
+            tmp1 += _fact * powi(qp, c);
+            tmp2 += _fact * double(c) * powi(qp, c - 1);
         }
         double dSdqp = (-double(D + 1) * powi(1.0 - qp, D) * tmp1 + powi(1.0 - qp, D + 1) * tmp2);
         return dSdqp * dqpdq;
@@ -1171,8 +1171,7 @@ struct Poisson : public SchemeBase {
             double tmp2 = 0.0;
             for (signed int c = 1; c < C; c++) {
                 tmp1 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * powi(qp, c);
-                tmp2 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * double(c) *
-                        powi(qp, c - 1);
+                tmp2 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * double(c) * powi(qp, c - 1);
             }
             dSdqp = (-double(D + 1) * powi(1.0 - qp, D) * tmp1 + powi(1.0 - qp, D + 1) * tmp2);
         }
@@ -1197,13 +1196,12 @@ struct Poisson : public SchemeBase {
             double tmp2 = 0.0;
             for (signed int c = 1; c < C; c++) {
                 tmp1 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * powi(qp, c);
-                tmp2 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * double(c) *
-                        powi(qp, c - 1);
+                tmp2 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * double(c) * powi(qp, c - 1);
             }
             dSdqp = (-double(D + 1) * powi(1.0 - qp, D) * tmp1 + powi(1.0 - qp, D + 1) * tmp2);
         }
-        double d3Sdqp3 = binomCDC * powi(1.0 - qp, D - 2) * powi(qp, C - 2) *
-                         ((2.0 - double(C + D)) * qp + double(C) - 1.0);
+        double d3Sdqp3 =
+            binomCDC * powi(1.0 - qp, D - 2) * powi(qp, C - 2) * ((2.0 - double(C + D)) * qp + double(C) - 1.0);
         return (d3Sdqp3 * dqpdq * dqpdq * dqpdq + 3.0 * d2Sdqp2 * dqpdq * d2qpdq2 + dSdqp * d3qpdq3);
     };
 
