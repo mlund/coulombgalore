@@ -29,7 +29,7 @@ template <class T> inline constexpr T powi(T x, unsigned int n) {
 #endif
 }
 #ifdef DOCTEST_LIBRARY_INCLUDED
-TEST_CASE("[Faunus] powi") {
+TEST_CASE("powi") {
     using doctest::Approx;
     double x = 3.1;
     CHECK(powi(x, 0) == Approx(1));
@@ -120,7 +120,7 @@ inline constexpr double qPochhammerSymbolDerivative(double q, int l = 0, int P =
         double nom = 0.0;
         double denom = 1.0;
         for (int k = 2; k < n + l + 1; k++) {
-            nom += (k - 1) * std::pow(q, k - 2);
+            nom += (k - 1) * powi(q, k - 2);
             denom += powi(q, k - 1);
         }
         dCt += nom / denom;
@@ -214,7 +214,7 @@ inline constexpr double qPochhammerSymbolThirdDerivative(double q, int l = 0, in
     double dCt = Ct * DS;                                   // derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
     double ddCt = dCt * DS + Ct * dDS;                      // second derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
     double dddCt = ddCt * DS + 2.0 * dCt * dDS + Ct * ddDS; // third derivative of \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
-    double Dt = std::pow(1.0 - q, P);                       // (1-q)^P
+    double Dt = powi(1.0 - q, P);                       // (1-q)^P
     double dDt = 0.0;
     if (P > 0)
         dDt = -P * powi(1 - q, P - 1); // derivative of (1-q)^P
@@ -914,7 +914,7 @@ struct Wolf : public SchemeBase {
         name = "Wolf";
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
-        self_energy_prefactor = {-alphaRed / pi_sqrt, -pow(alphaRed, 3) * 2.0 / 3.0 / pi_sqrt};
+        self_energy_prefactor = {-alphaRed / pi_sqrt, -powi(alphaRed, 3) * 2.0 / 3.0 / pi_sqrt};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
 
@@ -1039,27 +1039,27 @@ struct PoissonSimple : public SchemeBase {
     inline double short_range_function(double q) const override {
         double tmp = 0;
         for (signed int c = 0; c < C; c++)
-            tmp += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * std::pow(q, double(c));
-        return std::pow(1.0 - q, double(D + 1)) * tmp;
+            tmp += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * powi(q, c);
+        return powi(1.0 - q, D + 1) * tmp;
     }
 
     inline double short_range_function_derivative(double q) const override {
         double tmp1 = 1.0;
         double tmp2 = 0.0;
         for (signed int c = 1; c < C; c++) {
-            tmp1 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * std::pow(q, double(c));
+            tmp1 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * powi(q, c);
             tmp2 +=
-                double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * double(c) * std::pow(q, double(c) - 1.0);
+                double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * double(c) * powi(q, c - 1);
         }
-        return (-double(D + 1) * pow(1.0 - q, double(D)) * tmp1 + pow(1.0 - q, double(D + 1)) * tmp2);
+        return (-double(D + 1) * powi(1.0 - q, D) * tmp1 + powi(1.0 - q, D + 1) * tmp2);
     }
 
     inline double short_range_function_second_derivative(double q) const override {
-        return double(binomial(C + D, C) * D) * std::pow(1.0 - q, double(D) - 1.0) * std::pow(q, double(C) - 1.0);
+        return double(binomial(C + D, C) * D) * powi(1.0 - q, D - 1) * powi(q, C - 1);
     };
 
     inline double short_range_function_third_derivative(double q) const override {
-        return double(binomial(C + D, C) * D) * std::pow(1.0 - q, double(D) - 2.0) * std::pow(q, double(C) - 2.0) *
+        return double(binomial(C + D, C) * D) * powi(1.0 - q, D - 2) * powi(q, C - 2) *
                ((2.0 - double(C + D)) * q + double(C) - 1.0);
     };
 
@@ -1136,8 +1136,8 @@ struct Poisson : public SchemeBase {
         if (yukawa)
             qp = (1.0 - std::exp(2.0 * kappaRed * q)) * yukawa_denom;
         for (signed int c = 0; c < C; c++)
-            tmp += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * std::pow(qp, double(c));
-        return std::pow(1.0 - qp, double(D + 1)) * tmp;
+            tmp += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * powi(qp, c);
+        return powi(1.0 - qp, D + 1) * tmp;
     }
 
     inline double short_range_function_derivative(double q) const {
@@ -1149,12 +1149,12 @@ struct Poisson : public SchemeBase {
         }
         double tmp1 = 1.0;
         double tmp2 = 0.0;
-        for (signed int c = 1; c < C; c++) {
-            tmp1 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * std::pow(qp, double(c));
+        for (int c = 1; c < C; c++) {
+            tmp1 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * powi(qp, c);
             tmp2 +=
-                double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * double(c) * std::pow(qp, double(c) - 1.0);
+                double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * double(c) * powi(qp, c - 1);
         }
-        double dSdqp = (-double(D + 1) * pow(1.0 - qp, double(D)) * tmp1 + pow(1.0 - qp, double(D + 1)) * tmp2);
+        double dSdqp = (-double(D + 1) * powi(1.0 - qp, D) * tmp1 + powi(1.0 - qp, D + 1) * tmp2);
         return dSdqp * dqpdq;
     }
 
@@ -1170,13 +1170,13 @@ struct Poisson : public SchemeBase {
             double tmp1 = 1.0;
             double tmp2 = 0.0;
             for (signed int c = 1; c < C; c++) {
-                tmp1 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * std::pow(qp, double(c));
+                tmp1 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * powi(qp, c);
                 tmp2 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * double(c) *
-                        std::pow(qp, double(c) - 1.0);
+                        powi(qp, c - 1);
             }
-            dSdqp = (-double(D + 1) * pow(1.0 - qp, double(D)) * tmp1 + pow(1.0 - qp, double(D + 1)) * tmp2);
+            dSdqp = (-double(D + 1) * powi(1.0 - qp, D) * tmp1 + powi(1.0 - qp, D + 1) * tmp2);
         }
-        double d2Sdqp2 = binomCDC * std::pow(1.0 - qp, double(D) - 1.0) * std::pow(qp, double(C) - 1.0);
+        double d2Sdqp2 = binomCDC * powi(1.0 - qp, D - 1) * powi(qp, C - 1);
         return (d2Sdqp2 * dqpdq * dqpdq + dSdqp * d2qpdq2);
     };
 
@@ -1192,17 +1192,17 @@ struct Poisson : public SchemeBase {
             dqpdq = -2.0 * kappaRed * std::exp(2.0 * kappaRed * q) * yukawa_denom;
             d2qpdq2 = -4.0 * kappaRed2 * std::exp(2.0 * kappaRed * q) * yukawa_denom;
             d3qpdq3 = -8.0 * kappaRed2 * kappaRed * std::exp(2.0 * kappaRed * q) * yukawa_denom;
-            d2Sdqp2 = binomCDC * std::pow(1.0 - qp, double(D) - 1.0) * std::pow(qp, double(C) - 1.0);
+            d2Sdqp2 = binomCDC * powi(1.0 - qp, D - 1) * powi(qp, C - 1);
             double tmp1 = 1.0;
             double tmp2 = 0.0;
             for (signed int c = 1; c < C; c++) {
-                tmp1 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * std::pow(qp, double(c));
+                tmp1 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * powi(qp, c);
                 tmp2 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * double(c) *
-                        std::pow(qp, double(c) - 1.0);
+                        powi(qp, c - 1);
             }
-            dSdqp = (-double(D + 1) * pow(1.0 - qp, double(D)) * tmp1 + pow(1.0 - qp, double(D + 1)) * tmp2);
+            dSdqp = (-double(D + 1) * powi(1.0 - qp, D) * tmp1 + powi(1.0 - qp, D + 1) * tmp2);
         }
-        double d3Sdqp3 = binomCDC * std::pow(1.0 - qp, double(D) - 2.0) * std::pow(qp, double(C) - 2.0) *
+        double d3Sdqp3 = binomCDC * powi(1.0 - qp, D - 2) * powi(qp, C - 2) *
                          ((2.0 - double(C + D)) * qp + double(C) - 1.0);
         return (d3Sdqp3 * dqpdq * dqpdq * dqpdq + 3.0 * d2Sdqp2 * dqpdq * d2qpdq2 + dSdqp * d3qpdq3);
     };
