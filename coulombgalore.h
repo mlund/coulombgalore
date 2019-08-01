@@ -309,14 +309,8 @@ class SchemeBase {
 #ifdef NLOHMANN_JSON_HPP
   private:
     virtual void _to_json(nlohmann::json &) const = 0;
-    virtual void _from_json(const nlohmann::json &) = 0;
 
   public:
-    inline void from_json(const nlohmann::json &j) {
-        if (scheme != TruncationScheme::plain)
-            cutoff = j.at("cutoff").get<double>();
-        _from_json(j);
-    }
     inline void to_json(nlohmann::json &j) const {
         _to_json(j);
         if (cutoff < infty)
@@ -652,7 +646,6 @@ struct Plain : public SchemeBase {
 #ifdef NLOHMANN_JSON_HPP
   private:
     inline void _to_json(nlohmann::json &) const override {}
-    inline void _from_json(const nlohmann::json &) override {}
 #endif
 };
 
@@ -861,8 +854,11 @@ struct Ewald : public SchemeBase {
     }
 
 #ifdef NLOHMANN_JSON_HPP
+    inline Ewald(const nlohmann::json &j)
+        : Ewald(j.at("cutoff").get<double>(), j.at("alpha").get<double>(), j.value("epss", infty),
+                j.value("debyelength", infty)) {}
+
   private:
-    inline void _from_json(const nlohmann::json &j) override { alpha = j.at("alpha").get<int>(); }
     inline void _to_json(nlohmann::json &j) const override {
         j = {{ "alpha", alpha }};
     }
@@ -932,8 +928,9 @@ struct Wolf : public SchemeBase {
     }
 
 #ifdef NLOHMANN_JSON_HPP
+    inline Wolf(const nlohmann::json &j) : Wolf(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
+
   private:
-    inline void _from_json(const nlohmann::json &j) override { alpha = j.at("alpha").get<int>(); }
     inline void _to_json(nlohmann::json &j) const override {
         j = {{ "alpha", alpha }};
     }
@@ -988,8 +985,10 @@ struct qPotential : public SchemeBase {
     }
 
 #ifdef NLOHMANN_JSON_HPP
+    inline qPotential(const nlohmann::json &j)
+        : qPotential(j.at("cutoff").get<double>(), j.at("order").get<double>()) {}
+
   private:
-    inline void _from_json(const nlohmann::json &j) override { order = j.at("order").get<int>(); }
     inline void _to_json(nlohmann::json &j) const override {
         j = {{ "order", order }};
     }
@@ -1063,11 +1062,10 @@ struct PoissonSimple : public SchemeBase {
     };
 
 #ifdef NLOHMANN_JSON_HPP
+    inline PoissonSimple(const nlohmann::json &j)
+        : PoissonSimple(j.at("cutoff").get<double>(), j.at("C").get<int>(), j.at("D").get<int>()) {}
+
   private:
-    inline void _from_json(const nlohmann::json &j) override {
-        C = j.at("C").get<double>();
-        D = j.at("D").get<double>();
-    }
     inline void _to_json(nlohmann::json &j) const override {
         j = {{"C", C}, { "D", D }};
     }
@@ -1206,11 +1204,10 @@ struct Poisson : public SchemeBase {
     };
 
 #ifdef NLOHMANN_JSON_HPP
+    inline Poisson(const nlohmann::json &j)
+        : Poisson(j.at("cutoff").get<double>(), j.at("C").get<int>(), j.at("D").get<int>()) {}
+
   private:
-    inline void _from_json(const nlohmann::json &j) override {
-        C = j.at("C").get<double>();
-        D = j.at("D").get<double>();
-    }
     inline void _to_json(nlohmann::json &j) const override {
         j = {{"C", C}, { "D", D }};
     }
@@ -1369,9 +1366,10 @@ struct Fanourgakis : public SchemeBase {
     };
 
 #ifdef NLOHMANN_JSON_HPP
+    inline Fanourgakis(const nlohmann::json &j) : Fanourgakis(j.at("cutoff").get<double>()) {}
+
   private:
     inline void _to_json(nlohmann::json &) const override {}
-    inline void _from_json(const nlohmann::json &) override {}
 #endif
 };
 

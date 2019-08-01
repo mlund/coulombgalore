@@ -1,6 +1,6 @@
 # Coulomb Galore
 
-Header-only C++11 Library for Electrostatics
+Header-only C++14 Library for Electrostatics
 
 ## Testing
 

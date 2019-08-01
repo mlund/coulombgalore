@@ -29,6 +29,9 @@ int main() {
     u12 = pot_qpot.ion_ion_energy(z1, z2, r.norm());
     std::cout << "qPotential ion-ion energy: " << bjerrum_length * u12 << " kT" << std::endl;
 
+    // this is a truncated potential initiated using JSON
+    PairPotential<Wolf> pot_wolf( nlohmann::json({{"cutoff",cutoff}, {"alpha",0.5}}) );
+
 #ifdef NLOHMANN_JSON_HPP
     // if available, json can be used to (de)serialize
     nlohmann::json j;
