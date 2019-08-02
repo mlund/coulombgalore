@@ -319,6 +319,8 @@ class SchemeBase {
             j["doi"] = doi;
         if (not name.empty())
             j["type"] = name;
+        if (std::isfinite(debye_length))
+            j["debyelength"] = debye_length;
     }
 #endif
 };
@@ -804,27 +806,27 @@ TEST_CASE("[CoulombGalore] plain") {
  */
 class Ewald : public SchemeBase {
   private:
-    double alpha;                          //!< Damping-parameter
-    double alphaRed, alphaRed2, alphaRed3; //!< Reduced damping-parameter, and squared
-    double eps_sur;                        //!< Dielectric constant of the surrounding medium
-    double kappa;                          //!< Inverse Debye-length
-    double beta, beta2, beta3;             //!< Inverse ( twice Debye-length times damping-parameter )
-    const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
+    double alpha;                                           //!< Damping-parameter
+    double alphaRed, alphaRed2, alphaRed3;                  //!< Reduced damping-parameter, and squared
+    double eps_sur;                                         //!< Dielectric constant of the surrounding medium
+    double kappa;                                           //!< Inverse Debye-length
+    double beta, beta2, beta3;                              //!< Inverse ( twice Debye-length times damping-parameter )
+    const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0)); //!< √π
 
   public:
     /**
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
      */
-    inline Ewald(double cutoff, double alpha, double eps_sur, double debye_length = infty)
+    inline Ewald(double cutoff, double alpha, double eps_sur = infty, double debye_length = infty)
         : SchemeBase(TruncationScheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur) {
         name = "Ewald real-space";
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
         alphaRed3 = alphaRed2 * alphaRed;
         if (eps_sur < 1.0)
-            throw std::runtime_error("Dielectric constant of the surrounding medium is less than one");
-        T0 = 2.0 * (eps_sur - 1.0) / (2.0 * eps_sur + 1.0);
+            eps_sur = infty;
+        T0 = (std::isinf(eps_sur)) ? 1.0 : 2.0 * (eps_sur - 1.0) / (2.0 * eps_sur + 1.0);
         kappa = 1.0 / debye_length;
         beta = kappa / (2.0 * alpha);
         beta2 = beta * beta;
@@ -866,6 +868,10 @@ class Ewald : public SchemeBase {
   private:
     inline void _to_json(nlohmann::json &j) const override {
         j = {{ "alpha", alpha }};
+        if (std::isinf(eps_sur))
+            j["epss"] = "inf";
+        else
+            j["epss"] = eps_sur;
     }
 #endif
 };
