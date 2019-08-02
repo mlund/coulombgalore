@@ -362,7 +362,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
      *     \Phi(z,r) = \frac{z}{r}s(q)
      * @f]
      */
-    inline double ion_potential(double z, double r) {
+    inline double ion_potential(double z, double r) const {
         if (r < cutoff) {
             double q = r * invcutoff;
             return z / r * short_range_function(q) * std::exp(-kappa * r);
@@ -383,7 +383,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * qs^{\prime}(q) \right)
      * @f]
      */
-    inline double dipole_potential(Point mu, Point r) {
+    inline double dipole_potential(const Point &mu, const Point &r) const {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
@@ -407,7 +407,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
      *     {\bf E}(z, {\bf r}) = \frac{z \hat{{\bf r}} }{|{\bf r}|^2} \left( s(q) - qs^{\prime}(q) \right)
      * @f]
      */
-    inline Point ion_field(double z, Point r) {
+    inline Point ion_field(double z, const Point &r) const {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
@@ -433,18 +433,19 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * \frac{\boldsymbol{\mu}}{|{\bf r}|^3}\frac{q^2}{3}s^{\prime\prime}(q)
      * @f]
      */
-    inline Point dipole_field(Point mu, Point r) {
+    inline Point dipole_field(const Point &mu, const Point &r) const {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
+            double r3 = r1 * r2;
             double q = r1 * invcutoff;
             double srf = short_range_function(q);
             double dsrf = short_range_function_derivative(q);
             double ddsrf = short_range_function_second_derivative(q);
-            Point fieldD = (3.0 * mu.dot(r) * r / r2 - mu) / r2 / r1;
+            Point fieldD = (3.0 * mu.dot(r) * r / r2 - mu) / r3;
             fieldD *= (srf * (1.0 + kappa * r1 + kappa * kappa * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa * r1) +
                        q * q / 3.0 * ddsrf);
-            Point fieldI = mu / r2 / r1;
+            Point fieldI = mu / r3;
             fieldI *= (srf * kappa * kappa * r2 - 2.0 * kappa * r1 * q * dsrf + ddsrf * q * q) / 3.0;
             return (fieldD + fieldI) * std::exp(-kappa * r1);
         } else {
@@ -465,7 +466,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @f]
      * where @f[ \Phi(z_A,r) @f] is the potential from ion A.
      */
-    inline double ion_ion_energy(double zA, double zB, double r) { return zB * ion_potential(zA, r); }
+    inline double ion_ion_energy(double zA, double zB, double r) const { return zB * ion_potential(zA, r); }
 
     /**
      * @brief interaction energy between an ion and a dipole
@@ -485,7 +486,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @f]
      * where @f[ {\bf E}(z, {\bf r}) @f] is the field from the ion at the location of the dipole.
      */
-    inline double ion_dipole_energy(double z, Point mu, Point r) {
+    inline double ion_dipole_energy(double z, const Point &mu, const Point &r) const {
         // Both expressions below gives same answer. Keep for possible optimization in future.
         // return -mu.dot(ion_field(z,r)); // field from charge interacting with dipole
         return z * dipole_potential(mu, -r); // potential of dipole interacting with charge
@@ -505,7 +506,9 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @f]
      * where @f[ {\bf E}(\boldsymbol{\mu}_B, {\bf r}) @f] is the field from dipole B at the location of dipole A.
      */
-    inline double dipole_dipole_energy(Point muA, Point muB, Point r) { return -muA.dot(dipole_field(muB, r)); }
+    inline double dipole_dipole_energy(const Point &muA, const Point &muB, const Point &r) const {
+        return -muA.dot(dipole_field(muB, r));
+    }
 
     /**
      * @brief ion-ion interaction force
@@ -520,7 +523,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @f]
      * where @f[ {\bf E}(z_A, {\bf r}) @f] is the field from ion A at the location of ion B.
      */
-    inline Point ion_ion_force(double zA, double zB, Point r) { return zB * ion_field(zA, r); }
+    inline Point ion_ion_force(double zA, double zB, const Point &r) const { return zB * ion_field(zA, r); }
 
     /**
      * @brief ion-dipole interaction force
@@ -535,7 +538,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @f]
      * where @f[ {\bf E}(\boldsymbol{\mu}, {\bf r}) @f] is the field from the dipole at the location of the ion.
      */
-    inline Point ion_dipole_force(double z, Point mu, Point r) { return z * dipole_field(mu, r); }
+    inline Point ion_dipole_force(double z, const Point &mu, const Point &r) const { return z * dipole_field(mu, r); }
 
     /**
      * @brief dipole-dipole interaction energy
@@ -563,12 +566,13 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * (\boldsymbol{\mu}_B \cdot {\bf \hat{r}}){\bf \hat{r}}}{|{\bf r}|^4}.
      * @f]
      */
-    inline Point dipole_dipole_force(Point muA, Point muB, Point r) {
+    inline Point dipole_dipole_force(const Point &muA, const Point &muB, const Point &r) const {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
             Point rh = r / r1;
             double q = r1 * invcutoff;
+            double q2 = q * q;
             double r4 = r2 * r2;
             double muAdotRh = muA.dot(rh);
             double muBdotRh = muB.dot(rh);
@@ -579,11 +583,11 @@ template <class Tscheme> class PairPotential : public Tscheme {
             double ddsrf = short_range_function_second_derivative(q);
             double dddsrf = short_range_function_third_derivative(q);
             forceD *= (srf * (1.0 + kappa * r1 + kappa * kappa * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa * r1) +
-                       q * q / 3.0 * ddsrf);
+                       q2 / 3.0 * ddsrf);
             Point forceI = muAdotRh * muBdotRh * rh / r4;
             forceI *=
                 (srf * (1.0 + kappa * r1) * kappa * kappa * r2 - q * dsrf * (3.0 * kappa * r1 + 2.0) * kappa * r1 +
-                 ddsrf * (1.0 + 3.0 * kappa * r1) * q * q - q * q * q * dddsrf);
+                 ddsrf * (1.0 + 3.0 * kappa * r1) * q2 - q2 * q * dddsrf);
             return (forceD + forceI) * std::exp(-kappa * r1);
         } else {
             return {0, 0, 0};
@@ -601,7 +605,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
      *     \boldsymbol{\tau} = \boldsymbol{\mu} \times \boldsymbol{E}
      * @f]
      */
-    inline Point dipole_torque(Point mu, Point E) { return mu.cross(E); }
+    inline Point dipole_torque(const Point &mu, const Point &E) const { return mu.cross(E); }
 
     /**
      * @brief self-energy for all type of interactions
@@ -615,7 +619,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * where @f[ p_i @f] is the prefactor for the self-energy for species 'i'.
      * Here i=0 represent ions, i=1 represent dipoles etc.
      */
-    inline double self_energy(std::array<double, 2> m2) const {
+    inline double self_energy(const std::array<double, 2> &m2) const {
         if (self_energy_prefactor.size() != m2.size())
             throw std::runtime_error("Vectors of self energy prefactors and squared moment are not equal in size!");
 
@@ -1363,7 +1367,7 @@ class Fanourgakis : public SchemeBase {
     }
 
     inline double short_range_function(double q) const override {
-        return powi(1.0 - q, 4.0) * (1.0 + 2.25 * q + 3.0 * q * q + 2.5 * q * q * q);
+        return powi(1.0 - q, 4) * (1.0 + 2.25 * q + 3.0 * q * q + 2.5 * q * q * q);
     }
     inline double short_range_function_derivative(double q) const override {
         return (-1.75 + 26.25 * powi(q, 4) - 42.0 * powi(q, 5) + 17.5 * powi(q, 6));
