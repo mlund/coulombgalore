@@ -260,7 +260,7 @@ class SchemeBase {
   private:
     double dh = 1e-6; //!< numerical differentation step for short ranged functions
   public:
-    enum class TruncationScheme { plain, ewald, wolf, poisson, qpotential, fanourgakis };
+    enum class TruncationScheme { plain, ewald, wolf, poissonsimple, poisson, qpotential, fanourgakis };
     std::string doi;         //!< DOI for original citation
     std::string name;        //!< Descriptive name
     TruncationScheme scheme; //!< Truncation scheme
@@ -270,6 +270,8 @@ class SchemeBase {
     std::array<double, 2> self_energy_prefactor; //!< Prefactor for self-energies
     inline SchemeBase(TruncationScheme scheme, double cutoff, double debye_length = infty)
         : scheme(scheme), cutoff(cutoff), debye_length(debye_length) {}
+
+    virtual ~SchemeBase() = default;
 
     /**
      * @brief Short-range function
@@ -308,6 +310,7 @@ class SchemeBase {
 
 #ifdef NLOHMANN_JSON_HPP
   private:
+    friend class MultiScheme;
     virtual void _to_json(nlohmann::json &) const = 0;
 
   public:
@@ -337,6 +340,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
     double invcutoff; // inverse cutoff distance
     double cutoff2;   // square cutoff distance
     double kappa;     // inverse Debye-length
+    //std::shared_ptr<SchemeBase> scheme;
 
   public:
     using Tscheme::cutoff;
@@ -346,6 +350,12 @@ template <class Tscheme> class PairPotential : public Tscheme {
     using Tscheme::short_range_function_derivative;
     using Tscheme::short_range_function_second_derivative;
     using Tscheme::short_range_function_third_derivative;
+
+    template <class First, class... Args> PairPotential(First first, Args &&... args) : Tscheme(first, args...) {
+        invcutoff = 1.0 / cutoff;
+        cutoff2 = cutoff * cutoff;
+        kappa = 1.0 / debye_length;
+    } // this overload needed to MultiScheme defined later
 
     template <class... Args> PairPotential(Args &&... args) : Tscheme(args...) {
         invcutoff = 1.0 / cutoff;
@@ -1403,6 +1413,72 @@ TEST_CASE("[CoulombGalore] Fanourgakis") {
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-1.1484375));
     CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.28125));
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(6.5625));
+}
+#endif
+
+template <class... Args>
+std::shared_ptr<SchemeBase> createScheme(SchemeBase::TruncationScheme type, Args &&... args) {
+    std::shared_ptr<SchemeBase> scheme;
+    switch (type) {
+        case SchemeBase::TruncationScheme::plain:
+            scheme = std::make_shared<Plain>(args...);
+            break;
+        case SchemeBase::TruncationScheme::ewald:
+            scheme = std::make_shared<Ewald>(args...);
+            break;
+        case SchemeBase::TruncationScheme::poisson:
+            scheme = std::make_shared<Poisson>(args...);
+            break;
+        case SchemeBase::TruncationScheme::poissonsimple:
+            scheme = std::make_shared<PoissonSimple>(args...);
+            break;
+        case SchemeBase::TruncationScheme::wolf:
+            scheme = std::make_shared<Wolf>(args...);
+            break;
+        case SchemeBase::TruncationScheme::qpotential:
+            scheme = std::make_shared<qPotential>(args...);
+            break;
+        case SchemeBase::TruncationScheme::fanourgakis:
+            scheme = std::make_shared<Fanourgakis>(args...);
+            break;
+        default:
+            break;
+    }
+    return scheme;
+}
+
+class MultiScheme : public SchemeBase {
+  private:
+    std::shared_ptr<SchemeBase> scheme;
+
+  public:
+    template <class... Args> MultiScheme(TruncationScheme type, Args &&... args) : SchemeBase(type, infty) {
+        //scheme = createScheme(args...);
+    }
+    double short_range_function(double q) const override { return scheme->short_range_function(q); }
+
+    double short_range_function_derivative(double q) const override {
+        return scheme->short_range_function_derivative(q);
+    }
+
+    double short_range_function_second_derivative(double q) const override {
+        return scheme->short_range_function_second_derivative(q);
+    }
+
+    double short_range_function_third_derivative(double q) const override {
+        return scheme->short_range_function_third_derivative(q);
+    }
+
+    void _to_json(nlohmann::json &j) const override { scheme->_to_json(j); }
+};
+#ifdef DOCTEST_LIBRARY_INCLUDED
+TEST_CASE("[CoulombGalore] MultiScheme") {
+    using doctest::Approx;
+    PairPotential<MultiScheme> pot(SchemeBase::TruncationScheme::plain);
+    //CHECK(pot.short_range_function(0.5) == Approx(1.0));
+    //CHECK(pot.short_range_function_derivative(0.5) == Approx(0.0));
+    //CHECK(pot.short_range_function_second_derivative(0.5) == Approx(0.0));
+    //CHECK(pot.short_range_function_third_derivative(0.5) == Approx(0.0));
 }
 #endif
 
