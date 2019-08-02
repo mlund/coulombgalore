@@ -275,20 +275,20 @@ class SchemeBase {
      * @brief Short-range function
      * @param q q = r / Rcutoff
      */
-    virtual double short_range_function(double) const = 0;
+    virtual double short_range_function(double) const = 0; // this *must* be defined
 
     virtual double short_range_function_derivative(double q) const {
         return (short_range_function(q + dh) - short_range_function(q - dh)) / (2 * dh);
-    }
+    } // slow fallback function
 
     virtual double short_range_function_second_derivative(double q) const {
         return (short_range_function_derivative(q + dh) - short_range_function_derivative(q - dh)) / (2 * dh);
-    }
+    } // slower fallback function
 
     virtual double short_range_function_third_derivative(double q) const {
         return (short_range_function_second_derivative(q + dh) - short_range_function_second_derivative(q - dh)) /
                (2 * dh);
-    }
+    } // slowest fallback function
 
     /**
      * @brief Calculate dielectric constant
@@ -335,6 +335,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
     double invcutoff; // inverse cutoff distance
     double cutoff2;   // square cutoff distance
     double kappa;     // inverse Debye-length
+
   public:
     using Tscheme::cutoff;
     using Tscheme::debye_length;
@@ -630,19 +631,18 @@ template <class Tscheme> class PairPotential : public Tscheme {
 /**
  * @brief No truncation scheme
  */
-struct Plain : public SchemeBase {
-    double debye_length; //!< Debye-length (optional)
-    inline Plain(double debye_length = infty)
-        : SchemeBase(TruncationScheme::plain, infty, debye_length), debye_length(debye_length) {
+class Plain : public SchemeBase {
+  public:
+    inline Plain(double debye_length = infty) : SchemeBase(TruncationScheme::plain, infty, debye_length) {
         name = "plain";
         doi = "Premier mémoire sur l’électricité et le magnétisme by Charles-Augustin de Coulomb"; // :P
         self_energy_prefactor = {0.0, 0.0};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     };
-    inline double short_range_function(double q) const override { return 1.0; };
-    inline double short_range_function_derivative(double q) const override { return 0.0; }
-    inline double short_range_function_second_derivative(double q) const override { return 0.0; }
-    inline double short_range_function_third_derivative(double q) const override { return 0.0; }
+    inline double short_range_function(double) const override { return 1.0; };
+    inline double short_range_function_derivative(double) const override { return 0.0; }
+    inline double short_range_function_second_derivative(double) const override { return 0.0; }
+    inline double short_range_function_third_derivative(double) const override { return 0.0; }
 #ifdef NLOHMANN_JSON_HPP
   private:
     inline void _to_json(nlohmann::json &) const override {}
@@ -798,21 +798,22 @@ TEST_CASE("[CoulombGalore] plain") {
 /**
  * @brief Ewald real-space scheme
  */
-struct Ewald : public SchemeBase {
+class Ewald : public SchemeBase {
+  private:
     double alpha;                          //!< Damping-parameter
     double alphaRed, alphaRed2, alphaRed3; //!< Reduced damping-parameter, and squared
     double eps_sur;                        //!< Dielectric constant of the surrounding medium
-    double debye_length;                   //!< Debye-length
     double kappa;                          //!< Inverse Debye-length
     double beta, beta2, beta3;             //!< Inverse ( twice Debye-length times damping-parameter )
     const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
 
+  public:
     /**
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
      */
     inline Ewald(double cutoff, double alpha, double eps_sur, double debye_length = infty)
-        : SchemeBase(TruncationScheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur), debye_length(debye_length) {
+        : SchemeBase(TruncationScheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur) {
         name = "Ewald real-space";
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
@@ -834,7 +835,7 @@ struct Ewald : public SchemeBase {
         return 0.5 *
                (std::erfc(alphaRed * q + beta) * std::exp(4.0 * alphaRed * beta * q) + std::erfc(alphaRed * q - beta));
     }
-    inline double short_range_function_derivative(double q) const {
+    inline double short_range_function_derivative(double q) const override {
         double expC = std::exp(-powi(alphaRed * q - beta, 2));
         double erfcC = std::erfc(alphaRed * q + beta);
         return (-2.0 * alphaRed / pi_sqrt * expC + 2.0 * alphaRed * beta * erfcC * std::exp(4.0 * alphaRed * beta * q));
@@ -897,11 +898,13 @@ TEST_CASE("[CoulombGalore] Ewald real-space") {
 /**
  * @brief Wolf scheme
  */
-struct Wolf : public SchemeBase {
+class Wolf : public SchemeBase {
+  private:
     double alpha;               //!< Damping-parameter
     double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
     const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
 
+  public:
     /**
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
@@ -960,9 +963,11 @@ TEST_CASE("[CoulombGalore] Wolf") {
 /**
  * @brief qPotential scheme
  */
-struct qPotential : public SchemeBase {
+class qPotential : public SchemeBase {
+  private:
     int order; //!< Number of moment to cancel
 
+  public:
     /**
      * @param cutoff distance cutoff
      * @param order number of moments to cancel
@@ -1021,9 +1026,11 @@ TEST_CASE("[CoulombGalore] qPotential") {
 
 // -------------- Poisson --------------- Remove?!
 
-struct PoissonSimple : public SchemeBase {
+class PoissonSimple : public SchemeBase {
+  private:
     signed int C, D; //!< Number of derivatives to cancel
 
+  public:
     inline PoissonSimple(double cutoff, signed int C, signed int D)
         : SchemeBase(TruncationScheme::poisson, cutoff), C(C), D(D) {
         if ((C < 1) || (D < -1))
@@ -1101,14 +1108,16 @@ struct PoissonSimple : public SchemeBase {
  *
  *  - http://dx.doi.org/10.1088/1367-2630/ab1ec1
  */
-struct Poisson : public SchemeBase {
-    signed int C, D;                          //!< Derivative cancelling-parameters
-    double debye_length, kappaRed, kappaRed2; //!< Debye-length
+class Poisson : public SchemeBase {
+  private:
+    signed int C, D;            //!< Derivative cancelling-parameters
+    double kappaRed, kappaRed2; //!< Debye-length
     double yukawa_denom, binomCDC;
     bool yukawa;
 
+  public:
     inline Poisson(double cutoff, signed int C, signed int D, double debye_length = infty)
-        : SchemeBase(TruncationScheme::poisson, cutoff, debye_length), C(C), D(D), debye_length(debye_length) {
+        : SchemeBase(TruncationScheme::poisson, cutoff, debye_length), C(C), D(D) {
         if ((C < 1) || (D < -1))
             throw std::runtime_error("`C` must be larger than zero and `D` must be larger or equal to negative one");
         name = "poisson";
@@ -1137,7 +1146,7 @@ struct Poisson : public SchemeBase {
         return powi(1.0 - qp, D + 1) * tmp;
     }
 
-    inline double short_range_function_derivative(double q) const {
+    inline double short_range_function_derivative(double q) const override {
         double qp = q;
         double dqpdq = 1.0;
         if (yukawa) {
@@ -1341,7 +1350,8 @@ TEST_CASE("[CoulombGalore] Poisson") {
  * @brief Fanourgakis scheme.
  * @note This is the same as using the 'Poisson' approach with parameters 'C=4' and 'D=3'
  */
-struct Fanourgakis : public SchemeBase {
+class Fanourgakis : public SchemeBase {
+  public:
     /**
      * @param cutoff distance cutoff
      */
