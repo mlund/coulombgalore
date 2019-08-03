@@ -329,39 +329,23 @@ class SchemeBase {
 };
 
 /**
- * @brief Class for calculation of interaction energies
- * @todo Replace this with a splined version
- *
+ * @brief Class for calculation of interaction energies inherited by all schemes
  * @details In the following @f[ s(q) @f] is a short-ranged function and @f[ q = r / R_c @f] where @f[ R_c @f] is the
  * cut-off distance.
  */
-template <class Tscheme> class PairPotential : public Tscheme {
+template <class T> class Base {
   private:
     double invcutoff; // inverse cutoff distance
     double cutoff2;   // square cutoff distance
     double kappa;     // inverse Debye-length
-    //std::shared_ptr<SchemeBase> scheme;
 
   public:
-    using Tscheme::cutoff;
-    using Tscheme::debye_length;
-    using Tscheme::self_energy_prefactor;
-    using Tscheme::short_range_function;
-    using Tscheme::short_range_function_derivative;
-    using Tscheme::short_range_function_second_derivative;
-    using Tscheme::short_range_function_third_derivative;
-
-    template <class First, class... Args> PairPotential(First first, Args &&... args) : Tscheme(first, args...) {
+    Base() {
+        double cutoff = static_cast<T *>(this)->cutoff;
         invcutoff = 1.0 / cutoff;
         cutoff2 = cutoff * cutoff;
-        kappa = 1.0 / debye_length;
+        kappa = 1.0 / static_cast<T *>(this)->debye_length;
     } // this overload needed to MultiScheme defined later
-
-    template <class... Args> PairPotential(Args &&... args) : Tscheme(args...) {
-        invcutoff = 1.0 / cutoff;
-        cutoff2 = cutoff * cutoff;
-        kappa = 1.0 / debye_length;
-    }
 
     /**
      * @brief potential from ion
@@ -375,9 +359,9 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * @f]
      */
     inline double ion_potential(double z, double r) const {
-        if (r < cutoff) {
+        if (r < static_cast<const T *>(this)->cutoff) {
             double q = r * invcutoff;
-            return z / r * short_range_function(q) * std::exp(-kappa * r);
+            return z / r * static_cast<const T *>(this)->short_range_function(q) * std::exp(-kappa * r);
         } else {
             return 0.0;
         }
@@ -401,7 +385,8 @@ template <class Tscheme> class PairPotential : public Tscheme {
             double r1 = std::sqrt(r2);
             double q = r1 * invcutoff;
             return mu.dot(r) / r2 / r1 *
-                   (short_range_function(q) * (1.0 + kappa * r1) - q * short_range_function_derivative(q)) *
+                   (static_cast<const T *>(this)->short_range_function(q) * (1.0 + kappa * r1) -
+                    q * static_cast<const T *>(this)->short_range_function_derivative(q)) *
                    std::exp(-kappa * r1);
         } else {
             return 0.0;
@@ -425,7 +410,8 @@ template <class Tscheme> class PairPotential : public Tscheme {
             double r1 = std::sqrt(r2);
             double q = r1 * invcutoff;
             return z * r / r2 / r1 *
-                   (short_range_function(q) * (1.0 + kappa * r1) - q * short_range_function_derivative(q)) *
+                   (static_cast<const T *>(this)->short_range_function(q) * (1.0 + kappa * r1) -
+                    q * static_cast<const T *>(this)->short_range_function_derivative(q)) *
                    std::exp(-kappa * r1);
         } else {
             return {0, 0, 0};
@@ -451,9 +437,9 @@ template <class Tscheme> class PairPotential : public Tscheme {
             double r1 = std::sqrt(r2);
             double r3 = r1 * r2;
             double q = r1 * invcutoff;
-            double srf = short_range_function(q);
-            double dsrf = short_range_function_derivative(q);
-            double ddsrf = short_range_function_second_derivative(q);
+            double srf = static_cast<const T *>(this)->short_range_function(q);
+            double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
+            double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
             Point fieldD = (3.0 * mu.dot(r) * r / r2 - mu) / r3;
             fieldD *= (srf * (1.0 + kappa * r1 + kappa * kappa * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa * r1) +
                        q * q / 3.0 * ddsrf);
@@ -590,10 +576,10 @@ template <class Tscheme> class PairPotential : public Tscheme {
             double muBdotRh = muB.dot(rh);
             Point forceD =
                 3.0 * ((5.0 * muAdotRh * muBdotRh - muA.dot(muB)) * rh - muBdotRh * muA - muAdotRh * muB) / r4;
-            double srf = short_range_function(q);
-            double dsrf = short_range_function_derivative(q);
-            double ddsrf = short_range_function_second_derivative(q);
-            double dddsrf = short_range_function_third_derivative(q);
+            double srf = static_cast<const T *>(this)->short_range_function(q);
+            double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
+            double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
+            double dddsrf = static_cast<const T *>(this)->short_range_function_third_derivative(q);
             forceD *= (srf * (1.0 + kappa * r1 + kappa * kappa * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa * r1) +
                        q2 / 3.0 * ddsrf);
             Point forceI = muAdotRh * muBdotRh * rh / r4;
@@ -632,12 +618,12 @@ template <class Tscheme> class PairPotential : public Tscheme {
      * Here i=0 represent ions, i=1 represent dipoles etc.
      */
     inline double self_energy(const std::array<double, 2> &m2) const {
-        if (self_energy_prefactor.size() != m2.size())
+        if (static_cast<const T *>(this)->self_energy_prefactor.size() != m2.size())
             throw std::runtime_error("Vectors of self energy prefactors and squared moment are not equal in size!");
 
         double e_self = 0.0;
-        for (int i = 0; i < self_energy_prefactor.size(); i++)
-            e_self += self_energy_prefactor.at(i) * m2.at(i) * powi(invcutoff, 2 * i + 1);
+        for (int i = 0; i < static_cast<const T *>(this)->self_energy_prefactor.size(); i++)
+            e_self += static_cast<const T *>(this)->self_energy_prefactor.at(i) * m2.at(i) * powi(invcutoff, 2 * i + 1);
         return e_self;
     }
 };
@@ -647,7 +633,7 @@ template <class Tscheme> class PairPotential : public Tscheme {
 /**
  * @brief No truncation scheme
  */
-class Plain : public SchemeBase {
+class Plain : public SchemeBase, public Base<Plain> {
   public:
     inline Plain(double debye_length = infty) : SchemeBase(TruncationScheme::plain, infty, debye_length) {
         name = "plain";
@@ -676,7 +662,7 @@ TEST_CASE("[CoulombGalore] plain") {
     Point muB = {13, 17, 5}; // dipole moment
     Point r = {23, 0, 0};    // distance vector
     Point rh = {1, 0, 0};    // normalized distance vector
-    PairPotential<Plain> pot;
+    Plain pot;
 
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(1.0));
@@ -780,7 +766,7 @@ TEST_CASE("[CoulombGalore] plain") {
 
     // Check Yukawa-interactions
     double debye_length = 23.0;
-    PairPotential<Plain> potY(debye_length);
+    Plain potY(debye_length);
 
     // Test potentials
     CHECK(potY.ion_potential(zA, cutoff + 1.0) == Approx(0.01808996296));
@@ -814,7 +800,7 @@ TEST_CASE("[CoulombGalore] plain") {
 /**
  * @brief Ewald real-space scheme
  */
-class Ewald : public SchemeBase {
+class Ewald : public SchemeBase, public Base<Ewald> {
   private:
     double alpha;                                           //!< Damping-parameter
     double alphaRed, alphaRed2, alphaRed3;                  //!< Reduced damping-parameter, and squared
@@ -893,7 +879,7 @@ TEST_CASE("[CoulombGalore] Ewald real-space") {
     double cutoff = 29.0; // cutoff distance
     double alpha = 0.1;   // damping-parameter
     double eps_sur = infty;
-    PairPotential<Ewald> pot(cutoff, alpha, eps_sur);
+    Ewald pot(cutoff, alpha, eps_sur);
 
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.04030497436));
@@ -902,7 +888,7 @@ TEST_CASE("[CoulombGalore] Ewald real-space") {
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
 
     double debye_length = 23.0;
-    PairPotential<Ewald> potY(cutoff, alpha, eps_sur, debye_length);
+    Ewald potY(cutoff, alpha, eps_sur, debye_length);
 
     // Test short-ranged function
     CHECK(potY.short_range_function(0.5) == Approx(0.07306333588));
@@ -918,7 +904,7 @@ TEST_CASE("[CoulombGalore] Ewald real-space") {
 /**
  * @brief Wolf scheme
  */
-class Wolf : public SchemeBase {
+class Wolf : public SchemeBase, public Base<Wolf> {
   private:
     double alpha;               //!< Damping-parameter
     double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
@@ -966,7 +952,7 @@ TEST_CASE("[CoulombGalore] Wolf") {
     using doctest::Approx;
     double cutoff = 29.0; // cutoff distance
     double alpha = 0.1;   // damping-parameter
-    PairPotential<Wolf> pot(cutoff, alpha);
+    Wolf pot(cutoff, alpha);
 
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.04028442542));
@@ -983,7 +969,7 @@ TEST_CASE("[CoulombGalore] Wolf") {
 /**
  * @brief qPotential scheme
  */
-class qPotential : public SchemeBase {
+class qPotential : public SchemeBase, public Base<qPotential> {
   private:
     int order; //!< Number of moment to cancel
 
@@ -1026,7 +1012,7 @@ TEST_CASE("[CoulombGalore] qPotential") {
     using doctest::Approx;
     double cutoff = 29.0; // cutoff distance
     int order = 4;        // number of higher order moments to cancel - 1
-    PairPotential<qPotential> pot(cutoff, order);
+    qPotential pot(cutoff, order);
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.3076171875));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-1.453125));
@@ -1046,7 +1032,7 @@ TEST_CASE("[CoulombGalore] qPotential") {
 
 // -------------- Poisson --------------- Remove?!
 
-class PoissonSimple : public SchemeBase {
+class PoissonSimple : public SchemeBase, public Base<PoissonSimple> {
   private:
     signed int C, D; //!< Number of derivatives to cancel
 
@@ -1128,7 +1114,7 @@ class PoissonSimple : public SchemeBase {
  *
  *  - http://dx.doi.org/10.1088/1367-2630/ab1ec1
  */
-class Poisson : public SchemeBase {
+class Poisson : public SchemeBase, public Base<Poisson> {
   private:
     signed int C, D;            //!< Derivative cancelling-parameters
     double kappaRed, kappaRed2; //!< Debye-length
@@ -1250,7 +1236,7 @@ TEST_CASE("[CoulombGalore] Poisson") {
     signed C = 3;         // number of cancelled derivatives at origin -2 (starting from second derivative)
     signed D = 3;         // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
     double cutoff = 29.0; // cutoff distance
-    PairPotential<Poisson> pot33(cutoff, C, D);
+    Poisson pot33(cutoff, C, D);
 
     // Test short-ranged function
     CHECK(pot33.short_range_function(0.5) == Approx(0.15625));
@@ -1275,7 +1261,7 @@ TEST_CASE("[CoulombGalore] Poisson") {
     Point muB = {13, 17, 5}; // dipole moment
     Point r = {23, 0, 0};    // distance vector
     Point rh = {1, 0, 0};    // normalized distance vector
-    PairPotential<Poisson> pot43(cutoff, C, D);
+    Poisson pot43(cutoff, C, D);
 
     // Test short-ranged function
     CHECK(pot43.short_range_function(0.5) == Approx(0.19921875));
@@ -1329,7 +1315,7 @@ TEST_CASE("[CoulombGalore] Poisson") {
     D = 3;         // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
     cutoff = 29.0; // cutoff distance
     double debye_length = 23.0;
-    PairPotential<Poisson> potY(cutoff, C, D, debye_length);
+    Poisson potY(cutoff, C, D, debye_length);
 
     // Test short-ranged function
     CHECK(potY.short_range_function(0.5) == Approx(0.5673222034));
@@ -1370,7 +1356,7 @@ TEST_CASE("[CoulombGalore] Poisson") {
  * @brief Fanourgakis scheme.
  * @note This is the same as using the 'Poisson' approach with parameters 'C=4' and 'D=3'
  */
-class Fanourgakis : public SchemeBase {
+class Fanourgakis : public SchemeBase, public Base<Fanourgakis> {
   public:
     /**
      * @param cutoff distance cutoff
@@ -1407,78 +1393,12 @@ class Fanourgakis : public SchemeBase {
 TEST_CASE("[CoulombGalore] Fanourgakis") {
     using doctest::Approx;
     double cutoff = 29.0; // cutoff distance
-    PairPotential<Fanourgakis> pot(cutoff);
+    Fanourgakis pot(cutoff);
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.1992187500));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-1.1484375));
     CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.28125));
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(6.5625));
-}
-#endif
-
-template <class... Args>
-std::shared_ptr<SchemeBase> createScheme(SchemeBase::TruncationScheme type, Args &&... args) {
-    std::shared_ptr<SchemeBase> scheme;
-    switch (type) {
-        case SchemeBase::TruncationScheme::plain:
-            scheme = std::make_shared<Plain>(args...);
-            break;
-        case SchemeBase::TruncationScheme::ewald:
-            scheme = std::make_shared<Ewald>(args...);
-            break;
-        case SchemeBase::TruncationScheme::poisson:
-            scheme = std::make_shared<Poisson>(args...);
-            break;
-        case SchemeBase::TruncationScheme::poissonsimple:
-            scheme = std::make_shared<PoissonSimple>(args...);
-            break;
-        case SchemeBase::TruncationScheme::wolf:
-            scheme = std::make_shared<Wolf>(args...);
-            break;
-        case SchemeBase::TruncationScheme::qpotential:
-            scheme = std::make_shared<qPotential>(args...);
-            break;
-        case SchemeBase::TruncationScheme::fanourgakis:
-            scheme = std::make_shared<Fanourgakis>(args...);
-            break;
-        default:
-            break;
-    }
-    return scheme;
-}
-
-class MultiScheme : public SchemeBase {
-  private:
-    std::shared_ptr<SchemeBase> scheme;
-
-  public:
-    template <class... Args> MultiScheme(TruncationScheme type, Args &&... args) : SchemeBase(type, infty) {
-        //scheme = createScheme(args...);
-    }
-    double short_range_function(double q) const override { return scheme->short_range_function(q); }
-
-    double short_range_function_derivative(double q) const override {
-        return scheme->short_range_function_derivative(q);
-    }
-
-    double short_range_function_second_derivative(double q) const override {
-        return scheme->short_range_function_second_derivative(q);
-    }
-
-    double short_range_function_third_derivative(double q) const override {
-        return scheme->short_range_function_third_derivative(q);
-    }
-
-    void _to_json(nlohmann::json &j) const override { scheme->_to_json(j); }
-};
-#ifdef DOCTEST_LIBRARY_INCLUDED
-TEST_CASE("[CoulombGalore] MultiScheme") {
-    using doctest::Approx;
-    PairPotential<MultiScheme> pot(SchemeBase::TruncationScheme::plain);
-    //CHECK(pot.short_range_function(0.5) == Approx(1.0));
-    //CHECK(pot.short_range_function_derivative(0.5) == Approx(0.0));
-    //CHECK(pot.short_range_function_second_derivative(0.5) == Approx(0.0));
-    //CHECK(pot.short_range_function_third_derivative(0.5) == Approx(0.0));
 }
 #endif
 

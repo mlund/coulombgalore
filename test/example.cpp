@@ -20,17 +20,17 @@ int main() {
     double bjerrum_length = e * e / (4 * pi * e0 * kB * T); // [m]
 
     // this is just the plain old Coulomb potential
-    PairPotential<Plain> pot_plain;
+    Plain pot_plain;
     double u12 = pot_plain.ion_ion_energy(z1, z2, r.norm());
     std::cout << "plain ion-ion energy:      " << bjerrum_length * u12 << " kT" << std::endl;
 
     // this is a truncated potential
-    PairPotential<qPotential> pot_qpot(cutoff, 3);
+    qPotential pot_qpot(cutoff, 3);
     u12 = pot_qpot.ion_ion_energy(z1, z2, r.norm());
     std::cout << "qPotential ion-ion energy: " << bjerrum_length * u12 << " kT" << std::endl;
 
     // this is a truncated potential initiated using JSON
-    PairPotential<Wolf> pot_wolf( nlohmann::json({{"cutoff",cutoff}, {"alpha",0.5}}) );
+    Wolf pot_wolf( nlohmann::json({{"cutoff",cutoff}, {"alpha",0.5}}) );
 
 #ifdef NLOHMANN_JSON_HPP
     // if available, json can be used to (de)serialize
