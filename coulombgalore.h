@@ -8,9 +8,9 @@
 
 namespace CoulombGalore {
 
-typedef Eigen::Vector3d Point; //!< typedef for 3d vector
+typedef Eigen::Vector3d vec3; //!< typedef for 3d vector
 
-constexpr double infty = std::numeric_limits<double>::infinity(); //!< Numerical infinity
+constexpr double infinity = std::numeric_limits<double>::infinity(); //!< Numerical infinity
 
 /**
  * @brief n'th integer power of float
@@ -250,47 +250,30 @@ TEST_CASE("qPochhammerSymbol") {
 }
 #endif
 
+//!< Enum defining all possible schemes
+enum class Scheme { plain, ewald, wolf, poissonsimple, poisson, qpotential, fanourgakis };
+
 /**
  * @brief Base class for truncation schemes
  *
- * Derived classes must implement the splitting function which
- * does not need to be highly optimized as it will later be splined.
+ * This is the public interface used for dynamic storage of
+ * different schemes. Energy functions are provided as virtual
+ * functions which carries runtime overhead. The best performance
+ * call these functions directly from the derived class.
  */
 class SchemeBase {
-  private:
-    double dh = 1e-6; //!< numerical differentation step for short ranged functions
   public:
-    enum class TruncationScheme { plain, ewald, wolf, poissonsimple, poisson, qpotential, fanourgakis };
-    std::string doi;         //!< DOI for original citation
-    std::string name;        //!< Descriptive name
-    TruncationScheme scheme; //!< Truncation scheme
-    double cutoff;           //!< Cut-off distance
-    double debye_length;     //!< Debye-length
+    std::string doi;     //!< DOI for original citation
+    std::string name;    //!< Descriptive name
+    Scheme scheme;       //!< Truncation scheme
+    double cutoff;       //!< Cut-off distance
+    double debye_length; //!< Debye-length
     double T0; //!< Spatial Fourier transformed modified interaction tensor, used to calculate the dielectric constant
     std::array<double, 2> self_energy_prefactor; //!< Prefactor for self-energies
-    inline SchemeBase(TruncationScheme scheme, double cutoff, double debye_length = infty)
+    inline SchemeBase(Scheme scheme, double cutoff, double debye_length = infinity)
         : scheme(scheme), cutoff(cutoff), debye_length(debye_length) {}
 
     virtual ~SchemeBase() = default;
-
-    /**
-     * @brief Short-range function
-     * @param q q = r / Rcutoff
-     */
-    virtual double short_range_function(double) const = 0; // this *must* be defined
-
-    virtual double short_range_function_derivative(double q) const {
-        return (short_range_function(q + dh) - short_range_function(q - dh)) / (2 * dh);
-    } // slow fallback function
-
-    virtual double short_range_function_second_derivative(double q) const {
-        return (short_range_function_derivative(q + dh) - short_range_function_derivative(q - dh)) / (2 * dh);
-    } // slower fallback function
-
-    virtual double short_range_function_third_derivative(double q) const {
-        return (short_range_function_second_derivative(q + dh) - short_range_function_second_derivative(q - dh)) /
-               (2 * dh);
-    } // slowest fallback function
 
     /**
      * @brief Calculate dielectric constant
@@ -308,15 +291,38 @@ class SchemeBase {
      */
     double calc_dielectric(double M2V) { return (M2V * T0 + 2.0 * M2V + 1.0) / (M2V * T0 - M2V + 1.0); }
 
+    /**
+     * @brief interaction energy between two ions
+     * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
+     * @param zA charge
+     * @param zB charge
+     * @param r charge separation
+     *
+     * @details The interaction energy between two charges is decribed by
+     * @f[
+     *     u(z_A, z_B, r) = z_B \Phi(z_A,r)
+     * @f]
+     * where @f[ \Phi(z_A,r) @f] is the potential from ion A.
+     * @note Calling from base class may be slow as it's virtual; call from derived class for better performance.
+     */
+    virtual double ion_ion_energy(double, double, double) const = 0;
+
+    virtual double ion_potential(double, double) const = 0;
+
+    virtual double dipole_potential(const vec3 &, const vec3 &) const = 0;
+
+    virtual double dipole_dipole_energy(const vec3 &, const vec3 &, const vec3 &) const = 0;
+
+    // add remaining funtions here...
+
 #ifdef NLOHMANN_JSON_HPP
   private:
-    friend class MultiScheme;
     virtual void _to_json(nlohmann::json &) const = 0;
 
   public:
     inline void to_json(nlohmann::json &j) const {
         _to_json(j);
-        if (cutoff < infty)
+        if (std::isfinite(cutoff))
             j["cutoff"] = cutoff;
         if (not doi.empty())
             j["doi"] = doi;
@@ -329,23 +335,23 @@ class SchemeBase {
 };
 
 /**
- * @brief Class for calculation of interaction energies inherited by all schemes
- * @details In the following @f[ s(q) @f] is a short-ranged function and @f[ q = r / R_c @f] where @f[ R_c @f] is the
- * cut-off distance.
+ * @brief Intermediate base class that implements the interaction energies
+ *
+ * Derived function need only implement short range functions and derivatives thereof.
  */
-template <class T> class Base {
+template <class T> class EnergyImplementation : public SchemeBase {
   private:
     double invcutoff; // inverse cutoff distance
     double cutoff2;   // square cutoff distance
     double kappa;     // inverse Debye-length
 
   public:
-    Base() {
-        double cutoff = static_cast<T *>(this)->cutoff;
+    EnergyImplementation(Scheme type, double cutoff, double debye_length = infinity)
+        : SchemeBase(type, cutoff, debye_length) {
         invcutoff = 1.0 / cutoff;
         cutoff2 = cutoff * cutoff;
-        kappa = 1.0 / static_cast<T *>(this)->debye_length;
-    } // this overload needed to MultiScheme defined later
+        kappa = 1.0 / debye_length;
+    }
 
     /**
      * @brief potential from ion
@@ -358,8 +364,8 @@ template <class T> class Base {
      *     \Phi(z,r) = \frac{z}{r}s(q)
      * @f]
      */
-    inline double ion_potential(double z, double r) const {
-        if (r < static_cast<const T *>(this)->cutoff) {
+    inline double ion_potential(double z, double r) const override {
+        if (r < cutoff) {
             double q = r * invcutoff;
             return z / r * static_cast<const T *>(this)->short_range_function(q) * std::exp(-kappa * r);
         } else {
@@ -379,7 +385,7 @@ template <class T> class Base {
      * qs^{\prime}(q) \right)
      * @f]
      */
-    inline double dipole_potential(const Point &mu, const Point &r) const {
+    inline double dipole_potential(const vec3 &mu, const vec3 &r) const override {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
@@ -404,7 +410,7 @@ template <class T> class Base {
      *     {\bf E}(z, {\bf r}) = \frac{z \hat{{\bf r}} }{|{\bf r}|^2} \left( s(q) - qs^{\prime}(q) \right)
      * @f]
      */
-    inline Point ion_field(double z, const Point &r) const {
+    inline vec3 ion_field(double z, const vec3 &r) const {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
@@ -431,7 +437,7 @@ template <class T> class Base {
      * \frac{\boldsymbol{\mu}}{|{\bf r}|^3}\frac{q^2}{3}s^{\prime\prime}(q)
      * @f]
      */
-    inline Point dipole_field(const Point &mu, const Point &r) const {
+    inline vec3 dipole_field(const vec3 &mu, const vec3 &r) const {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
@@ -440,10 +446,10 @@ template <class T> class Base {
             double srf = static_cast<const T *>(this)->short_range_function(q);
             double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
             double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
-            Point fieldD = (3.0 * mu.dot(r) * r / r2 - mu) / r3;
+            vec3 fieldD = (3.0 * mu.dot(r) * r / r2 - mu) / r3;
             fieldD *= (srf * (1.0 + kappa * r1 + kappa * kappa * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa * r1) +
                        q * q / 3.0 * ddsrf);
-            Point fieldI = mu / r3;
+            vec3 fieldI = mu / r3;
             fieldI *= (srf * kappa * kappa * r2 - 2.0 * kappa * r1 * q * dsrf + ddsrf * q * q) / 3.0;
             return (fieldD + fieldI) * std::exp(-kappa * r1);
         } else {
@@ -464,7 +470,7 @@ template <class T> class Base {
      * @f]
      * where @f[ \Phi(z_A,r) @f] is the potential from ion A.
      */
-    inline double ion_ion_energy(double zA, double zB, double r) const { return zB * ion_potential(zA, r); }
+    inline double ion_ion_energy(double zA, double zB, double r) const override { return zB * ion_potential(zA, r); }
 
     /**
      * @brief interaction energy between an ion and a dipole
@@ -484,7 +490,7 @@ template <class T> class Base {
      * @f]
      * where @f[ {\bf E}(z, {\bf r}) @f] is the field from the ion at the location of the dipole.
      */
-    inline double ion_dipole_energy(double z, const Point &mu, const Point &r) const {
+    inline double ion_dipole_energy(double z, const vec3 &mu, const vec3 &r) const {
         // Both expressions below gives same answer. Keep for possible optimization in future.
         // return -mu.dot(ion_field(z,r)); // field from charge interacting with dipole
         return z * dipole_potential(mu, -r); // potential of dipole interacting with charge
@@ -504,7 +510,7 @@ template <class T> class Base {
      * @f]
      * where @f[ {\bf E}(\boldsymbol{\mu}_B, {\bf r}) @f] is the field from dipole B at the location of dipole A.
      */
-    inline double dipole_dipole_energy(const Point &muA, const Point &muB, const Point &r) const {
+    inline double dipole_dipole_energy(const vec3 &muA, const vec3 &muB, const vec3 &r) const override {
         return -muA.dot(dipole_field(muB, r));
     }
 
@@ -521,7 +527,7 @@ template <class T> class Base {
      * @f]
      * where @f[ {\bf E}(z_A, {\bf r}) @f] is the field from ion A at the location of ion B.
      */
-    inline Point ion_ion_force(double zA, double zB, const Point &r) const { return zB * ion_field(zA, r); }
+    inline vec3 ion_ion_force(double zA, double zB, const vec3 &r) const { return zB * ion_field(zA, r); }
 
     /**
      * @brief ion-dipole interaction force
@@ -536,7 +542,7 @@ template <class T> class Base {
      * @f]
      * where @f[ {\bf E}(\boldsymbol{\mu}, {\bf r}) @f] is the field from the dipole at the location of the ion.
      */
-    inline Point ion_dipole_force(double z, const Point &mu, const Point &r) const { return z * dipole_field(mu, r); }
+    inline vec3 ion_dipole_force(double z, const vec3 &mu, const vec3 &r) const { return z * dipole_field(mu, r); }
 
     /**
      * @brief dipole-dipole interaction energy
@@ -564,17 +570,17 @@ template <class T> class Base {
      * (\boldsymbol{\mu}_B \cdot {\bf \hat{r}}){\bf \hat{r}}}{|{\bf r}|^4}.
      * @f]
      */
-    inline Point dipole_dipole_force(const Point &muA, const Point &muB, const Point &r) const {
+    inline vec3 dipole_dipole_force(const vec3 &muA, const vec3 &muB, const vec3 &r) const {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
-            Point rh = r / r1;
+            vec3 rh = r / r1;
             double q = r1 * invcutoff;
             double q2 = q * q;
             double r4 = r2 * r2;
             double muAdotRh = muA.dot(rh);
             double muBdotRh = muB.dot(rh);
-            Point forceD =
+            vec3 forceD =
                 3.0 * ((5.0 * muAdotRh * muBdotRh - muA.dot(muB)) * rh - muBdotRh * muA - muAdotRh * muB) / r4;
             double srf = static_cast<const T *>(this)->short_range_function(q);
             double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
@@ -582,7 +588,7 @@ template <class T> class Base {
             double dddsrf = static_cast<const T *>(this)->short_range_function_third_derivative(q);
             forceD *= (srf * (1.0 + kappa * r1 + kappa * kappa * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa * r1) +
                        q2 / 3.0 * ddsrf);
-            Point forceI = muAdotRh * muBdotRh * rh / r4;
+            vec3 forceI = muAdotRh * muBdotRh * rh / r4;
             forceI *=
                 (srf * (1.0 + kappa * r1) * kappa * kappa * r2 - q * dsrf * (3.0 * kappa * r1 + 2.0) * kappa * r1 +
                  ddsrf * (1.0 + 3.0 * kappa * r1) * q2 - q2 * q * dddsrf);
@@ -603,7 +609,7 @@ template <class T> class Base {
      *     \boldsymbol{\tau} = \boldsymbol{\mu} \times \boldsymbol{E}
      * @f]
      */
-    inline Point dipole_torque(const Point &mu, const Point &E) const { return mu.cross(E); }
+    inline vec3 dipole_torque(const vec3 &mu, const vec3 &E) const { return mu.cross(E); }
 
     /**
      * @brief self-energy for all type of interactions
@@ -631,21 +637,23 @@ template <class T> class Base {
 // -------------- Plain ---------------
 
 /**
- * @brief No truncation scheme
+ * @brief No truncation scheme, cutoff = infinity
  */
-class Plain : public SchemeBase, public Base<Plain> {
+class Plain : public EnergyImplementation<Plain> {
   public:
-    inline Plain(double debye_length = infty) : SchemeBase(TruncationScheme::plain, infty, debye_length) {
+    inline Plain(double debye_length = infinity) : EnergyImplementation(Scheme::plain, infinity, debye_length) {
         name = "plain";
         doi = "Premier mémoire sur l’électricité et le magnétisme by Charles-Augustin de Coulomb"; // :P
         self_energy_prefactor = {0.0, 0.0};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     };
-    inline double short_range_function(double) const override { return 1.0; };
-    inline double short_range_function_derivative(double) const override { return 0.0; }
-    inline double short_range_function_second_derivative(double) const override { return 0.0; }
-    inline double short_range_function_third_derivative(double) const override { return 0.0; }
+    inline double short_range_function(double) const { return 1.0; };
+    inline double short_range_function_derivative(double) const { return 0.0; }
+    inline double short_range_function_second_derivative(double) const { return 0.0; }
+    inline double short_range_function_third_derivative(double) const { return 0.0; }
 #ifdef NLOHMANN_JSON_HPP
+    inline Plain(const nlohmann::json &j) : Plain(j.value("debyelength", infinity)) {}
+
   private:
     inline void _to_json(nlohmann::json &) const override {}
 #endif
@@ -655,13 +663,13 @@ class Plain : public SchemeBase, public Base<Plain> {
 
 TEST_CASE("[CoulombGalore] plain") {
     using doctest::Approx;
-    double cutoff = 29.0;    // cutoff distance
-    double zA = 2.0;         // charge
-    double zB = 3.0;         // charge
-    Point muA = {19, 7, 11}; // dipole moment
-    Point muB = {13, 17, 5}; // dipole moment
-    Point r = {23, 0, 0};    // distance vector
-    Point rh = {1, 0, 0};    // normalized distance vector
+    double cutoff = 29.0;   // cutoff distance
+    double zA = 2.0;        // charge
+    double zB = 3.0;        // charge
+    vec3 muA = {19, 7, 11}; // dipole moment
+    vec3 muB = {13, 17, 5}; // dipole moment
+    vec3 r = {23, 0, 0};    // distance vector
+    vec3 rh = {1, 0, 0};    // normalized distance vector
     Plain pot;
 
     // Test short-ranged function
@@ -678,11 +686,11 @@ TEST_CASE("[CoulombGalore] plain") {
 
     // Test fields
     CHECK(pot.ion_field(zA, (cutoff + 1.0) * rh).norm() == Approx(0.002222222222));
-    Point E_ion = pot.ion_field(zA, r);
+    vec3 E_ion = pot.ion_field(zA, r);
     CHECK(E_ion[0] == Approx(0.003780718336));
     CHECK(E_ion.norm() == Approx(0.003780718336));
     CHECK(pot.dipole_field(muA, (cutoff + 1.0) * rh).norm() == Approx(0.001487948846));
-    Point E_dipole = pot.dipole_field(muA, r);
+    vec3 E_dipole = pot.dipole_field(muA, r);
     CHECK(E_dipole[0] == Approx(0.003123202104));
     CHECK(E_dipole[1] == Approx(-0.0005753267034));
     CHECK(E_dipole[2] == Approx(-0.0009040848196));
@@ -697,34 +705,34 @@ TEST_CASE("[CoulombGalore] plain") {
 
     // Test forces
     CHECK(pot.ion_ion_force(zA, zB, (cutoff + 1.0) * rh).norm() == Approx(0.006666666667));
-    Point F_ionion = pot.ion_ion_force(zA, zB, r);
+    vec3 F_ionion = pot.ion_ion_force(zA, zB, r);
     CHECK(F_ionion[0] == Approx(0.01134215501));
     CHECK(F_ionion.norm() == Approx(0.01134215501));
     CHECK(pot.ion_dipole_force(zB, muA, (cutoff + 1.0) * rh).norm() == Approx(0.004463846540));
-    Point F_iondipole = pot.ion_dipole_force(zB, muA, r);
+    vec3 F_iondipole = pot.ion_dipole_force(zB, muA, r);
     CHECK(F_iondipole[0] == Approx(0.009369606312));
     CHECK(F_iondipole[1] == Approx(-0.001725980110));
     CHECK(F_iondipole[2] == Approx(-0.002712254459));
     CHECK(pot.dipole_dipole_force(muA, muB, (cutoff + 1.0) * rh).norm() == Approx(0.002129033733));
-    Point F_dipoledipole = pot.dipole_dipole_force(muA, muB, r);
+    vec3 F_dipoledipole = pot.dipole_dipole_force(muA, muB, r);
     CHECK(F_dipoledipole[0] == Approx(0.003430519474));
     CHECK(F_dipoledipole[1] == Approx(-0.004438234569));
     CHECK(F_dipoledipole[2] == Approx(-0.002551448858));
 
     // Approximate dipoles by two charges respectively and compare to point-dipoles
     double d = 1e-3;                          // small distance
-    Point r_muA_1 = muA / muA.norm() * d;     // a small distance from dipole A ( the origin )
-    Point r_muA_2 = -muA / muA.norm() * d;    // a small distance from dipole B ( the origin )
-    Point r_muB_1 = r + muB / muB.norm() * d; // a small distance from dipole B ( 'r' )
-    Point r_muB_2 = r - muB / muB.norm() * d; // a small distance from dipole B ( 'r' )
+    vec3 r_muA_1 = muA / muA.norm() * d;      // a small distance from dipole A ( the origin )
+    vec3 r_muA_2 = -muA / muA.norm() * d;     // a small distance from dipole B ( the origin )
+    vec3 r_muB_1 = r + muB / muB.norm() * d;  // a small distance from dipole B ( 'r' )
+    vec3 r_muB_2 = r - muB / muB.norm() * d;  // a small distance from dipole B ( 'r' )
     double z_muA_1 = muA.norm() / (2.0 * d);  // charge 1 of approximative dipole A
     double z_muA_2 = -muA.norm() / (2.0 * d); // charge 2 of approximative dipole A
     double z_muB_1 = muB.norm() / (2.0 * d);  // charge 1 of approximative dipole B
     double z_muB_2 = -muB.norm() / (2.0 * d); // charge 2 of approximative dipole B
-    Point muA_approx = r_muA_1 * z_muA_1 + r_muA_2 * z_muA_2;
-    Point muB_approx = r_muB_1 * z_muB_1 + r_muB_2 * z_muB_2;
-    Point r_z1r = r - r_muA_1; // distance from charge 1 of dipole A to 'r'
-    Point r_z2r = r - r_muA_2; // distance from charge 2 of dipole A to 'r'
+    vec3 muA_approx = r_muA_1 * z_muA_1 + r_muA_2 * z_muA_2;
+    vec3 muB_approx = r_muB_1 * z_muB_1 + r_muB_2 * z_muB_2;
+    vec3 r_z1r = r - r_muA_1; // distance from charge 1 of dipole A to 'r'
+    vec3 r_z2r = r - r_muA_2; // distance from charge 2 of dipole A to 'r'
 
     // Check that dipole moment of the two charges corresponds to that from the dipole
     CHECK(muA[0] == Approx(muA_approx[0]));
@@ -741,9 +749,9 @@ TEST_CASE("[CoulombGalore] plain") {
     CHECK(potA == Approx(potA_1 + potA_2));
 
     // Check fields
-    Point fieldA = pot.dipole_field(muA, r);
-    Point fieldA_1 = pot.ion_field(z_muA_1, r_z1r);
-    Point fieldA_2 = pot.ion_field(z_muA_2, r_z2r);
+    vec3 fieldA = pot.dipole_field(muA, r);
+    vec3 fieldA_1 = pot.ion_field(z_muA_1, r_z1r);
+    vec3 fieldA_2 = pot.ion_field(z_muA_2, r_z2r);
     CHECK(fieldA[0] == Approx(fieldA_1[0] + fieldA_2[0]));
     CHECK(fieldA[1] == Approx(fieldA_1[1] + fieldA_2[1]));
     CHECK(fieldA[2] == Approx(fieldA_1[2] + fieldA_2[2]));
@@ -755,11 +763,11 @@ TEST_CASE("[CoulombGalore] plain") {
     CHECK(EA == Approx(EA_1 + EA_2));
 
     // Check forces
-    Point F_ionion_11 = pot.ion_ion_force(z_muA_1, z_muB_1, r_muA_1 - r_muB_1);
-    Point F_ionion_12 = pot.ion_ion_force(z_muA_1, z_muB_2, r_muA_1 - r_muB_2);
-    Point F_ionion_21 = pot.ion_ion_force(z_muA_2, z_muB_1, r_muA_2 - r_muB_1);
-    Point F_ionion_22 = pot.ion_ion_force(z_muA_2, z_muB_2, r_muA_2 - r_muB_2);
-    Point F_dipoledipole_approx = F_ionion_11 + F_ionion_12 + F_ionion_21 + F_ionion_22;
+    vec3 F_ionion_11 = pot.ion_ion_force(z_muA_1, z_muB_1, r_muA_1 - r_muB_1);
+    vec3 F_ionion_12 = pot.ion_ion_force(z_muA_1, z_muB_2, r_muA_1 - r_muB_2);
+    vec3 F_ionion_21 = pot.ion_ion_force(z_muA_2, z_muB_1, r_muA_2 - r_muB_1);
+    vec3 F_ionion_22 = pot.ion_ion_force(z_muA_2, z_muB_2, r_muA_2 - r_muB_2);
+    vec3 F_dipoledipole_approx = F_ionion_11 + F_ionion_12 + F_ionion_21 + F_ionion_22;
     CHECK(F_dipoledipole[0] == Approx(F_dipoledipole_approx[0]));
     CHECK(F_dipoledipole[1] == Approx(F_dipoledipole_approx[1]));
     CHECK(F_dipoledipole[2] == Approx(F_dipoledipole_approx[2]));
@@ -776,18 +784,18 @@ TEST_CASE("[CoulombGalore] plain") {
 
     // Test fields
     CHECK(potY.ion_field(zA, (cutoff + 1.0) * rh).norm() == Approx(0.001389518894));
-    Point E_ion_Y = potY.ion_field(zA, r);
+    vec3 E_ion_Y = potY.ion_field(zA, r);
     CHECK(E_ion_Y[0] == Approx(0.002781697098));
     CHECK(E_ion_Y.norm() == Approx(0.002781697098));
     CHECK(potY.dipole_field(muA, (cutoff + 1.0) * rh).norm() == Approx(0.001242154748));
-    Point E_dipole_Y = potY.dipole_field(muA, r);
+    vec3 E_dipole_Y = potY.dipole_field(muA, r);
     CHECK(E_dipole_Y[0] == Approx(0.002872404612));
     CHECK(E_dipole_Y[1] == Approx(-0.0004233017324));
     CHECK(E_dipole_Y[2] == Approx(-0.0006651884364));
 
     // Test forces
     CHECK(potY.dipole_dipole_force(muA, muB, (cutoff + 1.0) * rh).norm() == Approx(0.001859094075));
-    Point F_dipoledipole_Y = potY.dipole_dipole_force(muA, muB, r);
+    vec3 F_dipoledipole_Y = potY.dipole_dipole_force(muA, muB, r);
     CHECK(F_dipoledipole_Y[0] == Approx(0.003594120919));
     CHECK(F_dipoledipole_Y[1] == Approx(-0.003809715590));
     CHECK(F_dipoledipole_Y[2] == Approx(-0.002190126354));
@@ -800,66 +808,66 @@ TEST_CASE("[CoulombGalore] plain") {
 /**
  * @brief Ewald real-space scheme
  */
-class Ewald : public SchemeBase, public Base<Ewald> {
+class Ewald : public EnergyImplementation<Ewald> {
   private:
     double alpha;                                           //!< Damping-parameter
     double alphaRed, alphaRed2, alphaRed3;                  //!< Reduced damping-parameter, and squared
     double eps_sur;                                         //!< Dielectric constant of the surrounding medium
     double kappa;                                           //!< Inverse Debye-length
     double beta, beta2, beta3;                              //!< Inverse ( twice Debye-length times damping-parameter )
-    const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0)); //!< √π
+    const double sqrt_pi = 2.0 * std::sqrt(std::atan(1.0)); //!< √π
 
   public:
     /**
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
      */
-    inline Ewald(double cutoff, double alpha, double eps_sur = infty, double debye_length = infty)
-        : SchemeBase(TruncationScheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur) {
+    inline Ewald(double cutoff, double alpha, double eps_sur = infinity, double debye_length = infinity)
+        : EnergyImplementation(Scheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur) {
         name = "Ewald real-space";
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
         alphaRed3 = alphaRed2 * alphaRed;
         if (eps_sur < 1.0)
-            eps_sur = infty;
+            eps_sur = infinity;
         T0 = (std::isinf(eps_sur)) ? 1.0 : 2.0 * (eps_sur - 1.0) / (2.0 * eps_sur + 1.0);
         kappa = 1.0 / debye_length;
         beta = kappa / (2.0 * alpha);
         beta2 = beta * beta;
         beta3 = beta2 * beta;
         self_energy_prefactor = {
-            -alphaRed / pi_sqrt * (std::exp(-beta2) + pi_sqrt * beta * std::erf(beta)),
-            -alphaRed3 * 2.0 / 3.0 / pi_sqrt *
-                (2.0 * pi_sqrt * beta3 * std::erfc(beta) + (1.0 - 2.0 * beta2) * std::exp(-beta2))};
+            -alphaRed / sqrt_pi * (std::exp(-beta2) + sqrt_pi * beta * std::erf(beta)),
+            -alphaRed3 * 2.0 / 3.0 / sqrt_pi *
+                (2.0 * sqrt_pi * beta3 * std::erfc(beta) + (1.0 - 2.0 * beta2) * std::exp(-beta2))};
     }
 
-    inline double short_range_function(double q) const override {
+    inline double short_range_function(double q) const {
         return 0.5 *
                (std::erfc(alphaRed * q + beta) * std::exp(4.0 * alphaRed * beta * q) + std::erfc(alphaRed * q - beta));
     }
-    inline double short_range_function_derivative(double q) const override {
+    inline double short_range_function_derivative(double q) const {
         double expC = std::exp(-powi(alphaRed * q - beta, 2));
         double erfcC = std::erfc(alphaRed * q + beta);
-        return (-2.0 * alphaRed / pi_sqrt * expC + 2.0 * alphaRed * beta * erfcC * std::exp(4.0 * alphaRed * beta * q));
+        return (-2.0 * alphaRed / sqrt_pi * expC + 2.0 * alphaRed * beta * erfcC * std::exp(4.0 * alphaRed * beta * q));
     }
-    inline double short_range_function_second_derivative(double q) const override {
+    inline double short_range_function_second_derivative(double q) const {
         double expC = std::exp(-powi(alphaRed * q - beta, 2));
         double erfcC = std::erfc(alphaRed * q + beta);
-        return (4.0 * alphaRed2 / pi_sqrt * (alphaRed * q - 2.0 * beta) * expC +
+        return (4.0 * alphaRed2 / sqrt_pi * (alphaRed * q - 2.0 * beta) * expC +
                 8.0 * alphaRed2 * beta2 * erfcC * std::exp(4.0 * alphaRed * beta * q));
     }
-    inline double short_range_function_third_derivative(double q) const override {
+    inline double short_range_function_third_derivative(double q) const {
         double expC = std::exp(-powi(alphaRed * q - beta, 2));
         double erfcC = std::erfc(alphaRed * q + beta);
-        return (4.0 * alphaRed3 / pi_sqrt *
+        return (4.0 * alphaRed3 / sqrt_pi *
                     (1.0 - 2.0 * (alphaRed * q - 2.0 * beta) * (alphaRed * q - beta) - 4.0 * beta2) * expC +
                 32.0 * alphaRed3 * beta3 * erfcC * std::exp(4.0 * alphaRed * beta * q));
     }
 
 #ifdef NLOHMANN_JSON_HPP
     inline Ewald(const nlohmann::json &j)
-        : Ewald(j.at("cutoff").get<double>(), j.at("alpha").get<double>(), j.value("epss", infty),
-                j.value("debyelength", infty)) {}
+        : Ewald(j.at("cutoff").get<double>(), j.at("alpha").get<double>(), j.value("epss", infinity),
+                j.value("debyelength", infinity)) {}
 
   private:
     inline void _to_json(nlohmann::json &j) const override {
@@ -878,7 +886,7 @@ TEST_CASE("[CoulombGalore] Ewald real-space") {
     using doctest::Approx;
     double cutoff = 29.0; // cutoff distance
     double alpha = 0.1;   // damping-parameter
-    double eps_sur = infty;
+    double eps_sur = infinity;
     Ewald pot(cutoff, alpha, eps_sur);
 
     // Test short-ranged function
@@ -896,7 +904,6 @@ TEST_CASE("[CoulombGalore] Ewald real-space") {
     CHECK(potY.short_range_function_second_derivative(0.5) == Approx(4.423133599));
     CHECK(potY.short_range_function_third_derivative(0.5) == Approx(-19.85937171));
 }
-
 #endif
 
 // -------------- Wolf ---------------
@@ -904,7 +911,7 @@ TEST_CASE("[CoulombGalore] Ewald real-space") {
 /**
  * @brief Wolf scheme
  */
-class Wolf : public SchemeBase, public Base<Wolf> {
+class Wolf : public EnergyImplementation<Wolf> {
   private:
     double alpha;               //!< Damping-parameter
     double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
@@ -915,7 +922,7 @@ class Wolf : public SchemeBase, public Base<Wolf> {
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
      */
-    inline Wolf(double cutoff, double alpha) : SchemeBase(TruncationScheme::wolf, cutoff), alpha(alpha) {
+    inline Wolf(double cutoff, double alpha) : EnergyImplementation(Scheme::wolf, cutoff), alpha(alpha) {
         name = "Wolf";
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
@@ -923,16 +930,14 @@ class Wolf : public SchemeBase, public Base<Wolf> {
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
 
-    inline double short_range_function(double q) const override {
-        return (std::erfc(alphaRed * q) - q * std::erfc(alphaRed));
-    }
-    inline double short_range_function_derivative(double q) const override {
+    inline double short_range_function(double q) const { return (std::erfc(alphaRed * q) - q * std::erfc(alphaRed)); }
+    inline double short_range_function_derivative(double q) const {
         return (-2.0 * std::exp(-alphaRed2 * q * q) * alphaRed / pi_sqrt - std::erfc(alphaRed));
     }
-    inline double short_range_function_second_derivative(double q) const override {
+    inline double short_range_function_second_derivative(double q) const {
         return 4.0 * std::exp(-alphaRed2 * q * q) * alphaRed2 * alphaRed * q / pi_sqrt;
     }
-    inline double short_range_function_third_derivative(double q) const override {
+    inline double short_range_function_third_derivative(double q) const {
         return -8.0 * std::exp(-alphaRed2 * q * q) * alphaRed2 * alphaRed * (alphaRed2 * q * q - 0.5) / pi_sqrt;
     }
 
@@ -969,7 +974,7 @@ TEST_CASE("[CoulombGalore] Wolf") {
 /**
  * @brief qPotential scheme
  */
-class qPotential : public SchemeBase, public Base<qPotential> {
+class qPotential : public EnergyImplementation<qPotential> {
   private:
     int order; //!< Number of moment to cancel
 
@@ -978,20 +983,18 @@ class qPotential : public SchemeBase, public Base<qPotential> {
      * @param cutoff distance cutoff
      * @param order number of moments to cancel
      */
-    inline qPotential(double cutoff, int order) : SchemeBase(TruncationScheme::qpotential, cutoff), order(order) {
+    inline qPotential(double cutoff, int order) : EnergyImplementation(Scheme::qpotential, cutoff), order(order) {
         name = "qpotential";
         self_energy_prefactor = {-1.0, -1.0};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
 
-    inline double short_range_function(double q) const override { return qPochhammerSymbol(q, 0, order); }
-    inline double short_range_function_derivative(double q) const override {
-        return qPochhammerSymbolDerivative(q, 0, order);
-    }
-    inline double short_range_function_second_derivative(double q) const override {
+    inline double short_range_function(double q) const { return qPochhammerSymbol(q, 0, order); }
+    inline double short_range_function_derivative(double q) const { return qPochhammerSymbolDerivative(q, 0, order); }
+    inline double short_range_function_second_derivative(double q) const {
         return qPochhammerSymbolSecondDerivative(q, 0, order);
     }
-    inline double short_range_function_third_derivative(double q) const override {
+    inline double short_range_function_third_derivative(double q) const {
         return qPochhammerSymbolThirdDerivative(q, 0, order);
     }
 
@@ -1032,13 +1035,13 @@ TEST_CASE("[CoulombGalore] qPotential") {
 
 // -------------- Poisson --------------- Remove?!
 
-class PoissonSimple : public SchemeBase, public Base<PoissonSimple> {
+class PoissonSimple : public EnergyImplementation<PoissonSimple> {
   private:
     signed int C, D; //!< Number of derivatives to cancel
 
   public:
     inline PoissonSimple(double cutoff, signed int C, signed int D)
-        : SchemeBase(TruncationScheme::poisson, cutoff), C(C), D(D) {
+        : EnergyImplementation(Scheme::poisson, cutoff), C(C), D(D) {
         if ((C < 1) || (D < -1))
             throw std::runtime_error("`C` must be larger than zero and `D` must be larger or equal to negative one");
         name = "poisson";
@@ -1048,14 +1051,14 @@ class PoissonSimple : public SchemeBase, public Base<PoissonSimple> {
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
 
-    inline double short_range_function(double q) const override {
+    inline double short_range_function(double q) const {
         double tmp = 0;
         for (signed int c = 0; c < C; c++)
             tmp += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * powi(q, c);
         return powi(1.0 - q, D + 1) * tmp;
     }
 
-    inline double short_range_function_derivative(double q) const override {
+    inline double short_range_function_derivative(double q) const {
         double tmp1 = 1.0;
         double tmp2 = 0.0;
         for (signed int c = 1; c < C; c++) {
@@ -1065,11 +1068,11 @@ class PoissonSimple : public SchemeBase, public Base<PoissonSimple> {
         return (-double(D + 1) * powi(1.0 - q, D) * tmp1 + powi(1.0 - q, D + 1) * tmp2);
     }
 
-    inline double short_range_function_second_derivative(double q) const override {
+    inline double short_range_function_second_derivative(double q) const {
         return double(binomial(C + D, C) * D) * powi(1.0 - q, D - 1) * powi(q, C - 1);
     };
 
-    inline double short_range_function_third_derivative(double q) const override {
+    inline double short_range_function_third_derivative(double q) const {
         return double(binomial(C + D, C) * D) * powi(1.0 - q, D - 2) * powi(q, C - 2) *
                ((2.0 - double(C + D)) * q + double(C) - 1.0);
     };
@@ -1114,7 +1117,7 @@ class PoissonSimple : public SchemeBase, public Base<PoissonSimple> {
  *
  *  - http://dx.doi.org/10.1088/1367-2630/ab1ec1
  */
-class Poisson : public SchemeBase, public Base<Poisson> {
+class Poisson : public EnergyImplementation<Poisson> {
   private:
     signed int C, D;            //!< Derivative cancelling-parameters
     double kappaRed, kappaRed2; //!< Debye-length
@@ -1122,8 +1125,8 @@ class Poisson : public SchemeBase, public Base<Poisson> {
     bool yukawa;
 
   public:
-    inline Poisson(double cutoff, signed int C, signed int D, double debye_length = infty)
-        : SchemeBase(TruncationScheme::poisson, cutoff, debye_length), C(C), D(D) {
+    inline Poisson(double cutoff, signed int C, signed int D, double debye_length = infinity)
+        : EnergyImplementation(Scheme::poisson, cutoff, debye_length), C(C), D(D) {
         if ((C < 1) || (D < -1))
             throw std::runtime_error("`C` must be larger than zero and `D` must be larger or equal to negative one");
         name = "poisson";
@@ -1142,7 +1145,7 @@ class Poisson : public SchemeBase, public Base<Poisson> {
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) +
              short_range_function(0.0); // Is this OK for Yukawa-interactions?
     }
-    inline double short_range_function(double q) const override {
+    inline double short_range_function(double q) const {
         double tmp = 0;
         double qp = q;
         if (yukawa)
@@ -1152,7 +1155,7 @@ class Poisson : public SchemeBase, public Base<Poisson> {
         return powi(1.0 - qp, D + 1) * tmp;
     }
 
-    inline double short_range_function_derivative(double q) const override {
+    inline double short_range_function_derivative(double q) const {
         double qp = q;
         double dqpdq = 1.0;
         if (yukawa) {
@@ -1171,7 +1174,7 @@ class Poisson : public SchemeBase, public Base<Poisson> {
         return dSdqp * dqpdq;
     }
 
-    inline double short_range_function_second_derivative(double q) const override {
+    inline double short_range_function_second_derivative(double q) const {
         double qp = q;
         double dqpdq = 1.0;
         double d2qpdq2 = 0.0;
@@ -1192,7 +1195,7 @@ class Poisson : public SchemeBase, public Base<Poisson> {
         return (d2Sdqp2 * dqpdq * dqpdq + dSdqp * d2qpdq2);
     };
 
-    inline double short_range_function_third_derivative(double q) const override {
+    inline double short_range_function_third_derivative(double q) const {
         double qp = q;
         double dqpdq = 1.0;
         double d2qpdq2 = 0.0;
@@ -1220,7 +1223,8 @@ class Poisson : public SchemeBase, public Base<Poisson> {
 
 #ifdef NLOHMANN_JSON_HPP
     inline Poisson(const nlohmann::json &j)
-        : Poisson(j.at("cutoff").get<double>(), j.at("C").get<int>(), j.at("D").get<int>()) {}
+        : Poisson(j.at("cutoff").get<double>(), j.at("C").get<int>(), j.at("D").get<int>(),
+                  j.value("debyelength", infinity)) {}
 
   private:
     inline void _to_json(nlohmann::json &j) const override {
@@ -1253,14 +1257,14 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(pot33.short_range_function_second_derivative(0.0) == Approx(0.0));
     CHECK(pot33.short_range_function_third_derivative(0.0) == Approx(0.0));
 
-    C = 4;                   // number of cancelled derivatives at origin -2 (starting from second derivative)
-    D = 3;                   // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
-    double zA = 2.0;         // charge
-    double zB = 3.0;         // charge
-    Point muA = {19, 7, 11}; // dipole moment
-    Point muB = {13, 17, 5}; // dipole moment
-    Point r = {23, 0, 0};    // distance vector
-    Point rh = {1, 0, 0};    // normalized distance vector
+    C = 4;                  // number of cancelled derivatives at origin -2 (starting from second derivative)
+    D = 3;                  // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
+    double zA = 2.0;        // charge
+    double zB = 3.0;        // charge
+    vec3 muA = {19, 7, 11}; // dipole moment
+    vec3 muB = {13, 17, 5}; // dipole moment
+    vec3 r = {23, 0, 0};    // distance vector
+    vec3 rh = {1, 0, 0};    // normalized distance vector
     Poisson pot43(cutoff, C, D);
 
     // Test short-ranged function
@@ -1277,11 +1281,11 @@ TEST_CASE("[CoulombGalore] Poisson") {
 
     // Test fields
     CHECK(pot43.ion_field(zA, cutoff * rh).norm() == Approx(0.0));
-    Point E_ion = pot43.ion_field(zA, r);
+    vec3 E_ion = pot43.ion_field(zA, r);
     CHECK(E_ion[0] == Approx(0.0006052849004));
     CHECK(E_ion.norm() == Approx(0.0006052849004));
     CHECK(pot43.dipole_field(muA, cutoff * rh).norm() == Approx(0.0));
-    Point E_dipole = pot43.dipole_field(muA, r);
+    vec3 E_dipole = pot43.dipole_field(muA, r);
     CHECK(E_dipole[0] == Approx(0.002702513754));
     CHECK(E_dipole[1] == Approx(-0.00009210857180));
     CHECK(E_dipole[2] == Approx(-0.0001447420414));
@@ -1296,16 +1300,16 @@ TEST_CASE("[CoulombGalore] Poisson") {
 
     // Test forces
     CHECK(pot43.ion_ion_force(zA, zB, cutoff * rh).norm() == Approx(0.0));
-    Point F_ionion = pot43.ion_ion_force(zA, zB, r);
+    vec3 F_ionion = pot43.ion_ion_force(zA, zB, r);
     CHECK(F_ionion[0] == Approx(0.001815854701));
     CHECK(F_ionion.norm() == Approx(0.001815854701));
     CHECK(pot43.ion_dipole_force(zB, muA, cutoff * rh).norm() == Approx(0.0));
-    Point F_iondipole = pot43.ion_dipole_force(zB, muA, r);
+    vec3 F_iondipole = pot43.ion_dipole_force(zB, muA, r);
     CHECK(F_iondipole[0] == Approx(0.008107541263));
     CHECK(F_iondipole[1] == Approx(-0.0002763257154));
     CHECK(F_iondipole[2] == Approx(-0.0004342261242));
     CHECK(pot43.dipole_dipole_force(muA, muB, cutoff * rh).norm() == Approx(0.0));
-    Point F_dipoledipole = pot43.dipole_dipole_force(muA, muB, r);
+    vec3 F_dipoledipole = pot43.dipole_dipole_force(muA, muB, r);
     CHECK(F_dipoledipole[0] == Approx(0.009216400961));
     CHECK(F_dipoledipole[1] == Approx(-0.002797126801));
     CHECK(F_dipoledipole[2] == Approx(-0.001608010094));
@@ -1331,23 +1335,22 @@ TEST_CASE("[CoulombGalore] Poisson") {
 
     // Test fields
     CHECK(potY.ion_field(zA, cutoff * rh).norm() == Approx(0.0));
-    Point E_ion_Y = potY.ion_field(zA, r);
+    vec3 E_ion_Y = potY.ion_field(zA, r);
     CHECK(E_ion_Y[0] == Approx(0.001699041230));
     CHECK(E_ion_Y.norm() == Approx(0.001699041230));
     CHECK(potY.dipole_field(muA, cutoff * rh).norm() == Approx(0.0));
-    Point E_dipole_Y = potY.dipole_field(muA, r);
+    vec3 E_dipole_Y = potY.dipole_field(muA, r);
     CHECK(E_dipole_Y[0] == Approx(0.004956265485));
     CHECK(E_dipole_Y[1] == Approx(-0.0002585497523));
     CHECK(E_dipole_Y[2] == Approx(-0.0004062924688));
 
     // Test forces
     CHECK(potY.dipole_dipole_force(muA, muB, cutoff * rh).norm() == Approx(0.0));
-    Point F_dipoledipole_Y = potY.dipole_dipole_force(muA, muB, r);
+    vec3 F_dipoledipole_Y = potY.dipole_dipole_force(muA, muB, r);
     CHECK(F_dipoledipole_Y[0] == Approx(0.002987655338));
     CHECK(F_dipoledipole_Y[1] == Approx(-0.005360251621));
     CHECK(F_dipoledipole_Y[2] == Approx(-0.003081497308));
 }
-
 #endif
 
 // -------------- Fanourgakis ---------------
@@ -1356,28 +1359,28 @@ TEST_CASE("[CoulombGalore] Poisson") {
  * @brief Fanourgakis scheme.
  * @note This is the same as using the 'Poisson' approach with parameters 'C=4' and 'D=3'
  */
-class Fanourgakis : public SchemeBase, public Base<Fanourgakis> {
+class Fanourgakis : public EnergyImplementation<Fanourgakis> {
   public:
     /**
      * @param cutoff distance cutoff
      */
-    inline Fanourgakis(double cutoff) : SchemeBase(TruncationScheme::qpotential, cutoff) {
+    inline Fanourgakis(double cutoff) : EnergyImplementation(Scheme::qpotential, cutoff) {
         name = "fanourgakis";
         doi = "10.1063/1.3216520";
         self_energy_prefactor = {-1.0, -1.0};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
 
-    inline double short_range_function(double q) const override {
+    inline double short_range_function(double q) const {
         return powi(1.0 - q, 4) * (1.0 + 2.25 * q + 3.0 * q * q + 2.5 * q * q * q);
     }
-    inline double short_range_function_derivative(double q) const override {
+    inline double short_range_function_derivative(double q) const {
         return (-1.75 + 26.25 * powi(q, 4) - 42.0 * powi(q, 5) + 17.5 * powi(q, 6));
     }
-    inline double short_range_function_second_derivative(double q) const override {
+    inline double short_range_function_second_derivative(double q) const {
         return 105.0 * powi(q, 3) * powi(q - 1.0, 2);
     };
-    inline double short_range_function_third_derivative(double q) const override {
+    inline double short_range_function_third_derivative(double q) const {
         return 525.0 * powi(q, 2) * (q - 0.6) * (q - 1.0);
     };
 
@@ -1399,6 +1402,69 @@ TEST_CASE("[CoulombGalore] Fanourgakis") {
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-1.1484375));
     CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.28125));
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(6.5625));
+}
+#endif
+
+/**
+ * @brief Create arbitrary energy class
+ * @param type Energy type to create
+ * @param args Arguments passed to selected class, i.e. Plain, Ewald etc.
+ * @return Shared pointer to base class of created object
+ */
+template <class... Args> std::shared_ptr<SchemeBase> createScheme(Scheme type, Args &&... args) {
+    std::shared_ptr<SchemeBase> scheme;
+    switch (type) {
+    case Scheme::plain:
+        scheme = std::make_shared<Plain>(args...);
+        break;
+    case Scheme::ewald:
+        scheme = std::make_shared<Ewald>(args...);
+        break;
+    case Scheme::poisson:
+        scheme = std::make_shared<Poisson>(args...);
+        break;
+    case Scheme::poissonsimple:
+        scheme = std::make_shared<PoissonSimple>(args...);
+        break;
+    case Scheme::qpotential:
+        scheme = std::make_shared<qPotential>(args...);
+        break;
+    case Scheme::wolf:
+        scheme = std::make_shared<Wolf>(args...);
+        break;
+    case Scheme::fanourgakis:
+        scheme = std::make_shared<Fanourgakis>(args...);
+        break;
+    default:
+        break;
+    }
+    return scheme;
+}
+#ifdef DOCTEST_LIBRARY_INCLUDED
+TEST_CASE("[CoulombGalore] createScheme") {
+    using doctest::Approx;
+    double cutoff = 29.0;   // cutoff distance
+    double zA = 2.0;        // charge
+    double zB = 3.0;        // charge
+    vec3 muA = {19, 7, 11}; // dipole moment
+    vec3 muB = {13, 17, 5}; // dipole moment
+    vec3 r = {23, 0, 0};    // distance vector
+    vec3 rh = {1, 0, 0};    // normalized distance vector
+    auto pot = createScheme(Scheme::plain, infinity);
+
+    // Test potentials
+    CHECK(pot->ion_potential(zA, cutoff + 1.0) == Approx(0.06666666667));
+    CHECK(pot->ion_potential(zA, r.norm()) == Approx(0.08695652174));
+    CHECK(pot->dipole_potential(muA, (cutoff + 1.0) * rh) == Approx(0.02111111111));
+    CHECK(pot->dipole_potential(muA, r) == Approx(0.03591682420));
+
+#ifdef NLOHMANN_JSON_HPP
+    // Test Yukawa-interaction and note that we merely re-assign `pot`
+    pot = createScheme(Scheme::poisson,
+                       nlohmann::json({{"cutoff", cutoff}, {"C", 3}, {"D", 3}, {"debyelength", 23}}));
+    CHECK(pot->ion_potential(zA, cutoff) == Approx(0.0));
+    CHECK(pot->ion_potential(zA, r.norm()) == Approx(0.003344219306));
+#endif
 }
 #endif
 

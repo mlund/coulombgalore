@@ -11,9 +11,9 @@ int main() {
         T = 298.15,                // Temperature [K]
         kB = 1.380658e-23;         // Boltzmann's constant [J/K]
 
-    double z1 = 1, z2 = 2;     // two monopoles
-    double cutoff = 18e-10;    // cutoff distance, here in meters [m]
-    Point r = {7.0e-10, 0, 0}; // a distance vector, use same using as cutoff, i.e. [m]
+    double z1 = 1, z2 = 2;    // two monopoles
+    double cutoff = 18e-10;   // cutoff distance, here in meters [m]
+    vec3 r = {7.0e-10, 0, 0}; // a distance vector, use same using as cutoff, i.e. [m]
 
     // energies are returned in electrostatic units and we must multiply
     // with the Coulombic constant to get more familiar units:
@@ -29,10 +29,10 @@ int main() {
     u12 = pot_qpot.ion_ion_energy(z1, z2, r.norm());
     std::cout << "qPotential ion-ion energy: " << bjerrum_length * u12 << " kT" << std::endl;
 
-    // this is a truncated potential initiated using JSON
-    Wolf pot_wolf( nlohmann::json({{"cutoff",cutoff}, {"alpha",0.5}}) );
-
 #ifdef NLOHMANN_JSON_HPP
+    // this is a truncated potential initiated using JSON
+    Wolf pot_wolf(nlohmann::json({{"cutoff", cutoff}, {"alpha", 0.5}}));
+
     // if available, json can be used to (de)serialize
     nlohmann::json j;
     pot_qpot.to_json(j);
