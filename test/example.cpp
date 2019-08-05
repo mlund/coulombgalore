@@ -29,6 +29,18 @@ int main() {
     u12 = pot_qpot.ion_ion_energy(z1, z2, r.norm());
     std::cout << "qPotential ion-ion energy: " << bjerrum_length * u12 << " kT" << std::endl;
 
+    qPotential pot_qpot3(cutoff, 3);
+    qPotential pot_qpot4(cutoff, 4);
+
+    Fanourgakis pot_kis(cutoff);
+    Ewald pot_ewald(cutoff, 0.1e10, infinity);
+    
+    for (double q=0; q<=1; q+=0.01)
+        std::cout << q << " " << pot_qpot3.short_range_function(q)
+            << " " << pot_qpot4.short_range_function(q) << " "
+            << " " << pot_kis.short_range_function(q) << " "
+            << " " << pot_ewald.short_range_function(q) << "\n";
+
 #ifdef NLOHMANN_JSON_HPP
     // this is a truncated potential initiated using JSON
     Wolf pot_wolf(nlohmann::json({{"cutoff", cutoff}, {"alpha", 0.5}}));

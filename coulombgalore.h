@@ -12,6 +12,9 @@ typedef Eigen::Vector3d vec3; //!< typedef for 3d vector
 
 constexpr double infinity = std::numeric_limits<double>::infinity(); //!< Numerical infinity
 
+//!< Enum defining all possible schemes
+enum class Scheme { plain, ewald, wolf, poissonsimple, poisson, qpotential, fanourgakis };
+
 /**
  * @brief n'th integer power of float
  *
@@ -21,11 +24,11 @@ constexpr double infinity = std::numeric_limits<double>::infinity(); //!< Numeri
  * - https://martin.ankerl.com/2012/01/25/optimized-approximative-pow-in-c-and-cpp
  * - https://martin.ankerl.com/2007/10/04/optimized-pow-approximation-for-java-and-c-c/
  */
-template <class T> inline constexpr T powi(T x, unsigned int n) {
+inline double powi(double x, int n) {
 #if defined(__GNUG__)
     return __builtin_powi(x, n);
 #else
-    return n > 0 ? x * powi(x, n - 1) : 1;
+    return std::pow(x, n);
 #endif
 }
 #ifdef DOCTEST_LIBRARY_INCLUDED
@@ -250,9 +253,6 @@ TEST_CASE("qPochhammerSymbol") {
 }
 #endif
 
-//!< Enum defining all possible schemes
-enum class Scheme { plain, ewald, wolf, poissonsimple, poisson, qpotential, fanourgakis };
-
 /**
  * @brief Base class for truncation schemes
  *
@@ -390,7 +390,7 @@ template <class T> class EnergyImplementation : public SchemeBase {
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
             double q = r1 * invcutoff;
-            return mu.dot(r) / r2 / r1 *
+            return mu.dot(r) / (r2 * r1) *
                    (static_cast<const T *>(this)->short_range_function(q) * (1.0 + kappa * r1) -
                     q * static_cast<const T *>(this)->short_range_function_derivative(q)) *
                    std::exp(-kappa * r1);
@@ -415,7 +415,7 @@ template <class T> class EnergyImplementation : public SchemeBase {
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
             double q = r1 * invcutoff;
-            return z * r / r2 / r1 *
+            return z * r / (r2 * r1) *
                    (static_cast<const T *>(this)->short_range_function(q) * (1.0 + kappa * r1) -
                     q * static_cast<const T *>(this)->short_range_function_derivative(q)) *
                    std::exp(-kappa * r1);
@@ -624,12 +624,10 @@ template <class T> class EnergyImplementation : public SchemeBase {
      * Here i=0 represent ions, i=1 represent dipoles etc.
      */
     inline double self_energy(const std::array<double, 2> &m2) const {
-        if (static_cast<const T *>(this)->self_energy_prefactor.size() != m2.size())
-            throw std::runtime_error("Vectors of self energy prefactors and squared moment are not equal in size!");
-
+        static_assert(decltype(m2){0}.size() == decltype(self_energy_prefactor){0}.size());
         double e_self = 0.0;
-        for (int i = 0; i < static_cast<const T *>(this)->self_energy_prefactor.size(); i++)
-            e_self += static_cast<const T *>(this)->self_energy_prefactor.at(i) * m2.at(i) * powi(invcutoff, 2 * i + 1);
+        for (int i = 0; i < (int)m2.size(); i++)
+            e_self += self_energy_prefactor[i] * m2[i] * powi(invcutoff, 2 * i + 1);
         return e_self;
     }
 };
@@ -671,6 +669,9 @@ TEST_CASE("[CoulombGalore] plain") {
     vec3 r = {23, 0, 0};    // distance vector
     vec3 rh = {1, 0, 0};    // normalized distance vector
     Plain pot;
+
+    // Test self energy
+    CHECK(pot.self_energy({zA * zB, muA.norm() * muB.norm()}) == Approx(0.0));
 
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(1.0));
@@ -1045,7 +1046,7 @@ class PoissonSimple : public EnergyImplementation<PoissonSimple> {
         if ((C < 1) || (D < -1))
             throw std::runtime_error("`C` must be larger than zero and `D` must be larger or equal to negative one");
         name = "poisson";
-        doi = "10.1088/1367-2630/ab1ec1";
+        doi = "10/c5fr";
         double a1 = -double(C + D) / double(C);
         self_energy_prefactor = {a1, a1};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
@@ -1130,7 +1131,7 @@ class Poisson : public EnergyImplementation<Poisson> {
         if ((C < 1) || (D < -1))
             throw std::runtime_error("`C` must be larger than zero and `D` must be larger or equal to negative one");
         name = "poisson";
-        doi = "10.1088/1367-2630/ab1ec1";
+        doi = "10/c5fr";
         double a1 = -double(C + D) / double(C);
         kappaRed = cutoff / debye_length;
         yukawa = false;
@@ -1460,8 +1461,7 @@ TEST_CASE("[CoulombGalore] createScheme") {
 
 #ifdef NLOHMANN_JSON_HPP
     // Test Yukawa-interaction and note that we merely re-assign `pot`
-    pot = createScheme(Scheme::poisson,
-                       nlohmann::json({{"cutoff", cutoff}, {"C", 3}, {"D", 3}, {"debyelength", 23}}));
+    pot = createScheme(Scheme::poisson, nlohmann::json({{"cutoff", cutoff}, {"C", 3}, {"D", 3}, {"debyelength", 23}}));
     CHECK(pot->ion_potential(zA, cutoff) == Approx(0.0));
     CHECK(pot->ion_potential(zA, r.norm()) == Approx(0.003344219306));
 #endif
