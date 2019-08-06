@@ -58,7 +58,7 @@ TEST_CASE("Factorial") {
 #endif
 
 constexpr unsigned int binomial(unsigned int n, unsigned int k) {
-    return factorial(n) / factorial(k) / factorial(n - k);
+    return factorial(n) / (factorial(k) * factorial(n - k));
 }
 #ifdef DOCTEST_LIBRARY_INCLUDED
 TEST_CASE("Binomial") {
@@ -73,6 +73,31 @@ TEST_CASE("Binomial") {
     CHECK(binomial(3, 1) == 3);
     CHECK(binomial(4, 2) == 6);
     CHECK(binomial(5, 3) == 10);
+}
+#endif
+
+#ifdef DOCTEST_LIBRARY_INCLUDED
+// numerical differentioation used for unittests, only
+inline double diff1(std::function<double(double)> f, double x, double dx = 1e-4) {
+    return (f(x + dx) - f(x - dx)) / (2 * dx);
+}
+
+inline double diff2(std::function<double(double)> f, double x, double dx = 1e-4) {
+    return (diff1(f, x + dx, dx) - diff1(f, x - dx, dx)) / (2 * dx);
+}
+
+inline double diff3(std::function<double(double)> f, double x, double dx = 1e-4) {
+    return (diff2(f, x + dx, dx) - diff2(f, x - dx, dx)) / (2 * dx);
+}
+
+// Compare differentiation with numerical differentiation.
+template <class Potential> void testDerivatives(Potential &pot, double q) {
+    using doctest::Approx;
+    auto s = std::bind(&Potential::short_range_function, pot, std::placeholders::_1);
+    CHECK(s(q) == Approx(pot.short_range_function(q)));
+    CHECK(diff1(s, q) == Approx(pot.short_range_function_derivative(q)));
+    CHECK(diff2(s, q) == Approx(pot.short_range_function_second_derivative(q)));
+    CHECK(diff3(s, q) == Approx(pot.short_range_function_third_derivative(q)));
 }
 #endif
 
@@ -679,6 +704,8 @@ TEST_CASE("[CoulombGalore] plain") {
     CHECK(pot.short_range_function_second_derivative(0.5) == Approx(0.0));
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(0.0));
 
+    testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
+
     // Test potentials
     CHECK(pot.ion_potential(zA, cutoff + 1.0) == Approx(0.06666666667));
     CHECK(pot.ion_potential(zA, r.norm()) == Approx(0.08695652174));
@@ -896,6 +923,8 @@ TEST_CASE("[CoulombGalore] Ewald real-space") {
     CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.36159125));
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
 
+    testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
+
     double debye_length = 23.0;
     Ewald potY(cutoff, alpha, eps_sur, debye_length);
 
@@ -966,6 +995,8 @@ TEST_CASE("[CoulombGalore] Wolf") {
     CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.36159125));
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
     CHECK(pot.short_range_function(1.0) == Approx(0.0));
+
+    testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
 }
 
 #endif
@@ -1030,6 +1061,8 @@ TEST_CASE("[CoulombGalore] qPotential") {
     CHECK(pot.short_range_function_derivative(0.0) == Approx(-1.0));
     CHECK(pot.short_range_function_second_derivative(0.0) == Approx(-2.0));
     CHECK(pot.short_range_function_third_derivative(0.0) == Approx(0.0));
+
+    testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
 }
 
 #endif
@@ -1258,6 +1291,8 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(pot33.short_range_function_second_derivative(0.0) == Approx(0.0));
     CHECK(pot33.short_range_function_third_derivative(0.0) == Approx(0.0));
 
+    testDerivatives(pot33, 0.5); // Compare differentiation with numerical diff.
+
     C = 4;                  // number of cancelled derivatives at origin -2 (starting from second derivative)
     D = 3;                  // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
     double zA = 2.0;        // charge
@@ -1403,6 +1438,8 @@ TEST_CASE("[CoulombGalore] Fanourgakis") {
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-1.1484375));
     CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.28125));
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(6.5625));
+
+    testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
 }
 #endif
 
