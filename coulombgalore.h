@@ -35,6 +35,8 @@ inline double powi(double x, int n) {
 TEST_CASE("powi") {
     using doctest::Approx;
     double x = 3.1;
+    CHECK(powi(-x, -1) == Approx(std::pow(-x,-1)));
+    CHECK(powi(x, -1) == Approx(std::pow(x,-1)));
     CHECK(powi(x, 0) == Approx(1));
     CHECK(powi(x, 1) == Approx(x));
     CHECK(powi(x, 2) == Approx(x * x));
@@ -332,6 +334,8 @@ class SchemeBase {
      */
     virtual double ion_ion_energy(double, double, double) const = 0;
 
+    virtual vec3 ion_ion_force(double, double, const vec3&) const = 0;
+
     virtual double ion_potential(double, double) const = 0;
 
     virtual double dipole_potential(const vec3 &, const vec3 &) const = 0;
@@ -552,7 +556,7 @@ template <class T> class EnergyImplementation : public SchemeBase {
      * @f]
      * where @f[ {\bf E}(z_A, {\bf r}) @f] is the field from ion A at the location of ion B.
      */
-    inline vec3 ion_ion_force(double zA, double zB, const vec3 &r) const { return zB * ion_field(zA, r); }
+    inline vec3 ion_ion_force(double zA, double zB, const vec3 &r) const override { return zB * ion_field(zA, r); }
 
     /**
      * @brief ion-dipole interaction force
@@ -649,7 +653,7 @@ template <class T> class EnergyImplementation : public SchemeBase {
      * Here i=0 represent ions, i=1 represent dipoles etc.
      */
     inline double self_energy(const std::array<double, 2> &m2) const {
-        static_assert(decltype(m2){0}.size() == decltype(self_energy_prefactor){0}.size());
+        static_assert(decltype(m2){0}.size() == decltype(self_energy_prefactor){0}.size(), "static assert");
         double e_self = 0.0;
         for (int i = 0; i < (int)m2.size(); i++)
             e_self += self_energy_prefactor[i] * m2[i] * powi(invcutoff, 2 * i + 1);
@@ -1128,15 +1132,17 @@ class PoissonSimple : public EnergyImplementation<PoissonSimple> {
  * A general scheme which pending two parameters `C` and `D` can model several different pair-potentials.
  * For infinite Debye-length the following holds:
  *
- *  Type            | `C` | `D` | Reference / Comment
- *  --------------- | --- | --- | ----------------------
- *  `plain`         |  1  | -1  | Plain Coulomb
- *  `wolf`          |  1  |  0  | Undamped Wolf, DOI: 10.1063/1.478738
- *  `fennel`        |  1  |  1  | Levitt ( or undamped Fennell ), DOI: 10.1016/0010-4655(95)00049-L
- * (or 10.1063/1.2206581) `kale`          |  1  |  2  | Kale, DOI: 10.1021/ct200392u `mccann`        |  1  |  3  |
- * McCann, DOI: 10.1021/ct300961 `fukuda`        |  2  |  1  | Undamped Fukuda, DOI: 10.1063/1.3582791 `markland`      |
- * 2  |  2  | Markland, DOI: 10.1016/j.cplett.2008.09.019 `stenqvist`     |  3  |  3  | Stenqvist,
- * DOI: 10.1088/1367-2630/ab1ec1 `fanourgakis`   |  4  |  3  | Fanourgakis, DOI: 10.1063/1.3216520
+ * Type         | `C` | `D` | Reference / Comment
+ * ------------ | --- | --- | ----------------------
+ * `plain`      |  1  | -1  | Plain Coulomb
+ * `wolf`       |  1  |  0  | Undamped Wolf, doi:10.1063/1.478738
+ * `fennel`     |  1  |  1  | Levitt/undamped Fennell, doi:10/fp959p or 10/bqgmv2
+ * `zkale`      |  1  |  2  | Kale, doi:10/csh8bg
+ * `mccann`     |  1  |  3  | McCann, doi:10.1021/ct300961
+ * `fukuda`     |  2  |  1  | Undamped Fukuda, doi:10.1063/1.3582791
+ * `markland`   |  2  |  2  | Markland, doi:10.1016/j.cplett.2008.09.019
+ * `stenqvist`  |  3  |  3  | Stenqvist, doi:10/c5fr
+ * `fanourgakis`|  4  |  3  | Fanourgakis, doi:10.1063/1.3216520
  *
  *  The following keywords are required:
  *
@@ -1386,6 +1392,8 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(F_dipoledipole_Y[0] == Approx(0.002987655338));
     CHECK(F_dipoledipole_Y[1] == Approx(-0.005360251621));
     CHECK(F_dipoledipole_Y[2] == Approx(-0.003081497308));
+
+    //CHECK(Poisson(cutoff, 1, -1).short_range_function(0.5) == Approx(Plain().short_range_function(0.5) ));
 }
 #endif
 
@@ -1440,6 +1448,9 @@ TEST_CASE("[CoulombGalore] Fanourgakis") {
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(6.5625));
 
     testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
+
+    // Possion with D=4, C=3 should equal Fanourgakis:
+    CHECK(Poisson(cutoff, 4, 3).short_range_function(0.5) == Approx(pot.short_range_function(0.5)));
 }
 #endif
 
