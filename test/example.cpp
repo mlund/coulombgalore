@@ -4,6 +4,8 @@
 
 using namespace CoulombGalore;
 
+typedef Eigen::Vector3d Point; //!< typedef for 3d vector
+
 int main() {
     double pi = 3.141592653589793, // Pi
         e0 = 8.85419e-12,          // Permittivity of vacuum [C^2/(J*m)]
@@ -22,6 +24,12 @@ int main() {
     // this is just the plain old Coulomb potential
     PairPotential<Plain> pot_plain;
     double u12 = pot_plain.ion_ion_energy(z1, z2, r.norm());
+    std::cout << "plain ion-ion energy:      " << bjerrum_length * u12 << " kT" << std::endl;
+
+    // this is just the plain old Coulomb potential
+    double debye_length = 23.01e-10;
+    PairPotential<Plain> pot_plainY(debye_length);
+    u12 = pot_plainY.ion_ion_energy(z1, z2, r.norm());
     std::cout << "plain ion-ion energy:      " << bjerrum_length * u12 << " kT" << std::endl;
 
     // this is a truncated potential

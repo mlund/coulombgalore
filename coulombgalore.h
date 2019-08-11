@@ -290,6 +290,18 @@ class SchemeBase {
                (2 * dh);
     }
 
+    virtual double reciprocal_energy(std::vector<Point>, std::vector<double>, std::vector<Point>, Point, int) const { return 0.0; }
+
+    virtual double surface_energy(std::vector<Point>, std::vector<double>, std::vector<Point>, Point) const { return 0.0; }
+
+    virtual double charge_compensation_energy(std::vector<double>, Point) const {return 0.0; }
+
+    virtual Point reciprocal_force(std::vector<Point>, std::vector<double>, std::vector<Point>, int, Point, int) const { return {0.0,0.0,0.0}; }
+
+    virtual Point surface_force(std::vector<Point>, std::vector<double>, std::vector<Point>, int, Point) const { return {0.0,0.0,0.0}; }
+
+    virtual Point charge_compensation_force(std::vector<double>, Point) const {return {0.0,0.0,0.0}; }
+
     /**
      * @brief Calculate dielectric constant
      * @param M2V see details
@@ -806,13 +818,14 @@ TEST_CASE("[CoulombGalore] plain") {
  * @brief Ewald real-space scheme
  */
 struct Ewald : public SchemeBase {
-    double alpha;                          //!< Damping-parameter
+    double alpha, alpha2;                  //!< Damping-parameter
     double alphaRed, alphaRed2, alphaRed3; //!< Reduced damping-parameter, and squared
     double eps_sur;                        //!< Dielectric constant of the surrounding medium
     double debye_length;                   //!< Debye-length
-    double kappa;                          //!< Inverse Debye-length
+    double kappa, kappa2;                  //!< Inverse Debye-length
     double beta, beta2, beta3;             //!< Inverse ( twice Debye-length times damping-parameter )
     const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
+    const double pi = std::pow(2.0 * std::sqrt(std::atan(1.0)),2.0);
 
     /**
      * @param cutoff distance cutoff
@@ -821,6 +834,7 @@ struct Ewald : public SchemeBase {
     inline Ewald(double cutoff, double alpha, double eps_sur, double debye_length = infty)
         : SchemeBase(TruncationScheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur), debye_length(debye_length) {
         name = "Ewald real-space";
+        alpha2 = alpha * alpha;
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
         alphaRed3 = alphaRed2 * alphaRed;
@@ -828,6 +842,7 @@ struct Ewald : public SchemeBase {
             throw std::runtime_error("Dielectric constant of the surrounding medium is less than one");
         T0 = 2.0 * (eps_sur - 1.0) / (2.0 * eps_sur + 1.0);
         kappa = 1.0 / debye_length;
+        kappa2 = kappa * kappa;
         beta = kappa / (2.0 * alpha);
         beta2 = beta * beta;
         beta3 = beta2 * beta;
@@ -860,6 +875,105 @@ struct Ewald : public SchemeBase {
                 32.0 * alphaRed3 * beta3 * erfcC * std::exp(4.0 * alphaRed * beta * q));
     }
 
+    /**
+     * @brief Reciprocal-space energy
+     * @param positions Positions of particles
+     * @param charges Charges of particles
+     * @param dipoles Dipole moments of particles
+     * @param L Dimensions of unit-cell
+     * @param nmax Cut-off in reciprocal-space
+     * @note Uses spherical cut-off in summation
+     */
+    inline double reciprocal_energy(std::vector<Point> positions, std::vector<double> charges, std::vector<Point> dipoles, Point L, int nmax) const {
+        double volume = L[0]*L[1]*L[2];
+        if( std::abs( positions.size() - charges.size() ) > 0 || std::abs( positions.size() - dipoles.size() ) > 0 || std::abs( charges.size() - dipoles.size() ) > 0 )
+            throw std::runtime_error("Vectors must have same size!");
+
+        std::vector<Point> kvec;
+        std::vector<double> Ak;
+        int kvec_size = 0;
+        for(int nx = -nmax; nx < nmax+1; nx++) {
+            for(int ny = -nmax; ny < nmax+1; ny++) {
+                for(int nz = -nmax; nz < nmax+1; nz++) {
+                    Point kv = { 2.0 * pi * nx / L[0] , 2.0 * pi * ny / L[1] , 2.0 * pi * nz / L[2] };
+                    double k2 = double( kv.squaredNorm() ) + kappa2;
+                    Point nv = { nx , ny , nz };
+		    double nv1 = double( nv.norm() );
+                    if( nv1 > 0 && nv1 <= nmax) {
+                        kvec.push_back(kv);
+                        Ak.push_back( std::exp( -k2 / 4.0 / alpha2 ) / k2 );
+                        kvec_size++;
+                    }
+                }
+            }
+        }
+
+        double E = 0.0;
+        for(int k = 0; k < kvec_size; k++) {
+            std::complex<double> Qq(0.0,0.0);
+            std::complex<double> Qmu(0.0,0.0);
+            for(int i = 0; i < positions.size(); i++) {
+                double kDotR = kvec.at(k).dot( positions.at(i) );
+                Qq += charges.at(i) * std::complex<double>( cos(kDotR) , sin(kDotR) );
+                Qmu += dipoles.at(i).dot(kvec.at(k)) * std::complex<double>( -sin(kDotR) , cos(kDotR) );
+            }
+            std::complex<double> Q = Qq + Qmu;
+            E += ( pow( std::abs( Q ), 2.0 ) * Ak.at(k) );
+        }
+        return ( E * 2.0 * pi / volume );
+    }
+
+    /**
+     * @brief Surface-term
+     * @param positions Positions of particles
+     * @param charges Charges of particles
+     * @param dipoles Dipole moments of particles
+     * @param L Dimensions of unit-cell
+     */
+    inline double surface_energy(std::vector<Point> positions, std::vector<double> charges, std::vector<Point> dipoles, Point L) const {
+        if( std::abs( positions.size() - charges.size() ) > 0 || std::abs( positions.size() - dipoles.size() ) > 0 || std::abs( charges.size() - dipoles.size() ) > 0 )
+            throw std::runtime_error("Vectors must have same size!");
+
+        double volume = L[0]*L[1]*L[2];
+        Point sum_r_charges = {0.0,0.0,0.0};
+        Point sum_dipoles = {0.0,0.0,0.0};
+        for(int i = 0; i < positions.size(); i++) {
+            sum_r_charges += positions.at(i) * charges.at(i);
+            sum_dipoles += dipoles.at(i);
+        }
+        double sqDipoles = sum_r_charges.dot(sum_r_charges) + 2.0 * sum_r_charges.dot(sum_dipoles) + sum_dipoles.dot(sum_dipoles);
+        return ( 2.0 * pi / ( 2.0 * eps_sur + 1.0 ) / volume * sqDipoles );
+    }
+
+    inline Point surface_force(std::vector<Point> positions, std::vector<double> charges, std::vector<Point> dipoles, int I, Point L) const {
+        if( std::abs( positions.size() - charges.size() ) > 0 || std::abs( positions.size() - dipoles.size() ) > 0 || std::abs( charges.size() - dipoles.size() ) > 0 )
+            throw std::runtime_error("Vectors must have same size!");
+
+        double volume = L[0]*L[1]*L[2];
+        Point sum_r_charges = {0.0,0.0,0.0};
+        Point sum_dipoles = {0.0,0.0,0.0};
+        for(int i = 0; i < positions.size(); i++) {
+            sum_r_charges += positions.at(i) * charges.at(i);
+            sum_dipoles += dipoles.at(i);
+        }
+        double sqDipoles = 0.0;
+        return ( -4.0*pi/(2.0*eps_sur + 1.0)/volume * charges.at(I) *(sum_r_charges + sum_dipoles) );
+    }
+
+    /**
+     * @brief Compensating term for non-neutral systems
+     * @param charges Charges of particles
+     * @param L Dimensions of unit-cell
+     * @note DOI:10.1021/ct400626b
+     */
+    inline double charge_compensation_energy(std::vector<double> charges, Point L) const {
+        double volume = L[0]*L[1]*L[2];
+        double squaredSumQ = 0.0;
+        for(int i = 0; i < charges.size(); i++)
+            squaredSumQ += charges.at(i);
+        return ( -pi / 2.0 / alpha2 / volume * squaredSumQ );
+    }
+
 #ifdef NLOHMANN_JSON_HPP
   private:
     inline void _from_json(const nlohmann::json &j) override { alpha = j.at("alpha").get<int>(); }
@@ -871,7 +985,7 @@ struct Ewald : public SchemeBase {
 
 #ifdef DOCTEST_LIBRARY_INCLUDED
 
-TEST_CASE("[CoulombGalore] Ewald real-space") {
+TEST_CASE("[CoulombGalore] Ewald") {
     using doctest::Approx;
     double cutoff = 29.0; // cutoff distance
     double alpha = 0.1;   // damping-parameter
@@ -892,6 +1006,97 @@ TEST_CASE("[CoulombGalore] Ewald real-space") {
     CHECK(potY.short_range_function_derivative(0.5) == Approx(-0.63444119));
     CHECK(potY.short_range_function_second_derivative(0.5) == Approx(4.423133599));
     CHECK(potY.short_range_function_third_derivative(0.5) == Approx(-19.85937171));
+
+    cutoff = 5.0; // cutoff distance
+    alpha = std::sqrt(0.8);   // damping-parameter
+    eps_sur = 1.0;
+    PairPotential<Ewald> potR(cutoff, alpha, eps_sur);
+
+    // Test reciprocal-, surface-, and self-energy terms for ion-ion case
+    int kmax = 11;
+    Point L = {10.0,10.0,10.0};
+    Point rvA = {-0.5,0.0,0.0};
+    Point rvB = {0.5,0.0,0.0};
+    double qA = 1.0;
+    double qB = -1.0;
+    Point muA = {0.0,0.0,0.0};
+    Point muB = {0.0,0.0,0.0};
+    std::vector<Point> positions;
+    std::vector<double> charges;
+    std::vector<Point> dipoles;
+    positions.push_back(rvA);
+    positions.push_back(rvB);
+    charges.push_back(qA);
+    charges.push_back(qB);
+    dipoles.push_back(muA);
+    dipoles.push_back(muB);
+
+    double E_reciprocal = potR.reciprocal_energy(positions,charges, dipoles, L, kmax);
+    double E_surface = potR.surface_energy(positions,charges, dipoles, L);
+    std::array<double, 2> m2A{ {qA*qA, muA.dot(muA)} };
+    double E_selfA = potR.self_energy(m2A);
+    std::array<double, 2> m2B{ {qB*qB, muB.dot(muB)} };
+    double E_selfB = potR.self_energy(m2B);
+    double E_self = E_selfA + E_selfB;
+    Point rv = rvA - rvB;
+    double E_real = potR.ion_ion_energy(qA, qB, rv.norm());
+
+    CHECK(E_real == Approx(-0.205903210732068));
+    CHECK(E_reciprocal == Approx(0.213030681186940));
+    CHECK(E_surface == Approx(0.002094395102393));
+    CHECK(E_self == Approx(-1.009253008808064));
+
+    // Test reciprocal-, surface-, and self-energy terms for ion-dipole case
+    charges.clear();
+    dipoles.clear();
+    qA = 0.0;
+    qB = 1.0;
+    muA = {1.0,0.0,0.0};
+    muB = {0.0,0.0,0.0};
+    charges.push_back(qA);
+    charges.push_back(qB);
+    dipoles.push_back(muA);
+    dipoles.push_back(muB);
+
+    E_reciprocal = potR.reciprocal_energy(positions,charges, dipoles, L, kmax);
+    E_surface = potR.surface_energy(positions,charges, dipoles, L);
+    std::array<double, 2> m2Acm{ {qA*qA, muA.dot(muA)} };
+    E_selfA = potR.self_energy(m2Acm);
+    std::array<double, 2> m2Bcm{ {qB*qB, muB.dot(muB)} };
+    E_selfB = potR.self_energy(m2Bcm);
+    E_self = E_selfA + E_selfB;
+    E_real = potR.ion_dipole_energy(qB, muA, -rv);
+
+    CHECK(E_real == Approx(-0.659389819711985));
+    CHECK(E_reciprocal == Approx(0.968061548637305));
+    CHECK(E_surface == Approx(0.004712388980385));
+    CHECK(E_self == Approx(-0.773760640086182));
+
+    // Test reciprocal-, surface-, and self-energy terms for dipole-dipole case
+    charges.clear();
+    dipoles.clear();
+    qA = 0.0;
+    qB = 0.0;
+    muA = {1.0,0.0,0.0};
+    muB = {1.0,0.0,0.0};
+    charges.push_back(qA);
+    charges.push_back(qB);
+    dipoles.push_back(muA);
+    dipoles.push_back(muB);
+
+    E_reciprocal = potR.reciprocal_energy(positions,charges, dipoles, L, kmax);
+    E_surface = potR.surface_energy(positions,charges, dipoles, L);
+    std::array<double, 2> m2Am{ {qA*qA, muA.dot(muA)} };
+    E_selfA = potR.self_energy(m2Am);
+    std::array<double, 2> m2Bm{ {qB*qB, muB.dot(muB)} };
+    E_selfB = potR.self_energy(m2Bm);
+    E_self = E_selfA + E_selfB;
+    E_real = potR.dipole_dipole_energy(muA, muB, rv);
+
+    CHECK(E_real == Approx(-2.044358213791836));
+    CHECK(E_reciprocal == Approx(0.573873997906049));
+    CHECK(E_surface == Approx(0.008377580409573));
+    CHECK(E_self == Approx(-0.538268271364301));
 }
 
 #endif
