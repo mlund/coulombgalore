@@ -48,7 +48,8 @@ if(NOT doctest_POPULATED)
     add_definitions(-DDOCTEST_CONFIG_DISABLE)
 endif()
 
-include_directories(SYSTEM ${eigen_SOURCE_DIR} ${doctest_SOURCE_DIR} ${modernjson_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
+include_directories(SYSTEM ${eigen_SOURCE_DIR} ${doctest_SOURCE_DIR} ${modernjson_SOURCE_DIR})
+include_directories(${CMAKE_SOURCE_DIR})
 
 add_executable(example test/example.cpp)
 add_executable(unittests test/unittests.cpp)

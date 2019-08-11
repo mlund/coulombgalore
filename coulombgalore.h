@@ -6,6 +6,17 @@
 #include <iostream>
 #include <Eigen/Core>
 
+// https://en.cppreference.com/w/User:D41D8CD98F/feature_testing_macros#C.2B.2B17
+#ifdef __cpp_lib_apply
+    #include <tuple>
+    using std::apply;
+#elif __cpp_lib_exprimental_apply
+    #include <experimental/tuple>
+    using std::experimental::apply;
+#else
+//#error "no std::apply support ='("
+#endif
+
 namespace CoulombGalore {
 
 typedef Eigen::Vector3d vec3; //!< typedef for 3d vector
@@ -13,7 +24,7 @@ typedef Eigen::Vector3d vec3; //!< typedef for 3d vector
 constexpr double infinity = std::numeric_limits<double>::infinity(); //!< Numerical infinity
 
 //!< Enum defining all possible schemes
-enum class Scheme { plain, ewald, wolf, poissonsimple, poisson, qpotential, fanourgakis };
+enum class Scheme { plain, ewald, wolf, poissonsimple, poisson, qpotential, fanourgakis, qpotential5, spline };
 
 /**
  * @brief n'th integer power of float
@@ -31,77 +42,16 @@ inline double powi(double x, int n) {
     return std::pow(x, n);
 #endif
 }
-#ifdef DOCTEST_LIBRARY_INCLUDED
-TEST_CASE("powi") {
-    using doctest::Approx;
-    double x = 3.1;
-    CHECK(powi(-x, -1) == Approx(std::pow(-x,-1)));
-    CHECK(powi(x, -1) == Approx(std::pow(x,-1)));
-    CHECK(powi(x, 0) == Approx(1));
-    CHECK(powi(x, 1) == Approx(x));
-    CHECK(powi(x, 2) == Approx(x * x));
-    CHECK(powi(x, 4) == Approx(x * x * x * x));
-}
-#endif
 
 /**
  * @brief Returns the factorial of 'n'. Note that 'n' must be positive semidefinite.
  * @note Calculated at compile time and thus have no run-time overhead.
  */
 inline constexpr unsigned int factorial(unsigned int n) { return n <= 1 ? 1 : n * factorial(n - 1); }
-#ifdef DOCTEST_LIBRARY_INCLUDED
-TEST_CASE("Factorial") {
-    CHECK(factorial(0) == 1);
-    CHECK(factorial(1) == 1);
-    CHECK(factorial(2) == 2);
-    CHECK(factorial(3) == 6);
-    CHECK(factorial(10) == 3628800);
-}
-#endif
 
 constexpr unsigned int binomial(unsigned int n, unsigned int k) {
     return factorial(n) / (factorial(k) * factorial(n - k));
 }
-#ifdef DOCTEST_LIBRARY_INCLUDED
-TEST_CASE("Binomial") {
-    CHECK(binomial(3, 2) == 3);
-    CHECK(binomial(5, 2) == 10);
-    CHECK(binomial(8, 3) == 56);
-    CHECK(binomial(9, 7) == 36);
-    CHECK(binomial(5, 0) == 1);
-    CHECK(binomial(12, 1) == 12);
-    CHECK(binomial(11, 11) == 1);
-    CHECK(binomial(2, 0) == 1);
-    CHECK(binomial(3, 1) == 3);
-    CHECK(binomial(4, 2) == 6);
-    CHECK(binomial(5, 3) == 10);
-}
-#endif
-
-#ifdef DOCTEST_LIBRARY_INCLUDED
-// numerical differentioation used for unittests, only
-inline double diff1(std::function<double(double)> f, double x, double dx = 1e-4) {
-    return (f(x + dx) - f(x - dx)) / (2 * dx);
-}
-
-inline double diff2(std::function<double(double)> f, double x, double dx = 1e-4) {
-    return (diff1(f, x + dx, dx) - diff1(f, x - dx, dx)) / (2 * dx);
-}
-
-inline double diff3(std::function<double(double)> f, double x, double dx = 1e-4) {
-    return (diff2(f, x + dx, dx) - diff2(f, x - dx, dx)) / (2 * dx);
-}
-
-// Compare differentiation with numerical differentiation.
-template <class Potential> void testDerivatives(Potential &pot, double q) {
-    using doctest::Approx;
-    auto s = std::bind(&Potential::short_range_function, pot, std::placeholders::_1);
-    CHECK(s(q) == Approx(pot.short_range_function(q)));
-    CHECK(diff1(s, q) == Approx(pot.short_range_function_derivative(q)));
-    CHECK(diff2(s, q) == Approx(pot.short_range_function_second_derivative(q)));
-    CHECK(diff3(s, q) == Approx(pot.short_range_function_third_derivative(q)));
-}
-#endif
 
 /**
  * @brief Help-function for the q-potential scheme
@@ -257,28 +207,276 @@ inline constexpr double qPochhammerSymbolThirdDerivative(double q, int l = 0, in
     return (dddCt * Dt + 3.0 * ddCt * dDt + 3 * dCt * ddDt + Ct * dddDt);
 }
 
-#ifdef DOCTEST_LIBRARY_INCLUDED
-TEST_CASE("qPochhammerSymbol") {
-    using doctest::Approx;
-    CHECK(qPochhammerSymbol(0.5, 0, 0) == 1);
-    CHECK(qPochhammerSymbol(0, 0, 1) == 1);
-    CHECK(qPochhammerSymbol(1, 0, 1) == 0);
-    CHECK(qPochhammerSymbol(1, 1, 2) == 0);
-    CHECK(qPochhammerSymbol(0.75, 0, 2) == Approx(0.109375));
-    CHECK(qPochhammerSymbol(2.0 / 3.0, 2, 5) == Approx(0.4211104676));
-    CHECK(qPochhammerSymbol(0.125, 1, 1) == Approx(0.984375));
-    CHECK(qPochhammerSymbolDerivative(0.75, 0, 2) == Approx(-0.8125));
-    CHECK(qPochhammerSymbolDerivative(2.0 / 3.0, 2, 5) == Approx(-2.538458169));
-    CHECK(qPochhammerSymbolDerivative(0.125, 1, 1) == Approx(-0.25));
-    CHECK(qPochhammerSymbolSecondDerivative(0.75, 0, 2) == Approx(2.5));
-    CHECK(qPochhammerSymbolSecondDerivative(2.0 / 3.0, 2, 5) == Approx(-1.444601767));
-    CHECK(qPochhammerSymbolSecondDerivative(0.125, 1, 1) == Approx(-2.0));
-    CHECK(qPochhammerSymbolThirdDerivative(0.75, 0, 2) == Approx(6.0));
-    CHECK(qPochhammerSymbolThirdDerivative(2.0 / 3.0, 2, 5) == Approx(92.48631425));
-    CHECK(qPochhammerSymbolThirdDerivative(0.125, 1, 1) == Approx(0.0));
-    CHECK(qPochhammerSymbolThirdDerivative(0.4, 3, 7) == Approx(-32.80472205));
-}
+namespace Tabulate {
+
+/* base class for all tabulators - no dependencies */
+template <typename T = double> class TabulatorBase {
+  protected:
+    T utol = 1e-5, ftol = -1, umaxtol = -1, fmaxtol = -1;
+    T numdr = 0.0001; // dr for derivative evaluation
+
+    // First derivative with respect to x
+    T f1(std::function<T(T)> f, T x) const { return (f(x + numdr * 0.5) - f(x - numdr * 0.5)) / (numdr); }
+
+    // Second derivative with respect to x
+    T f2(std::function<T(T)> f, T x) const { return (f1(f, x + numdr * 0.5) - f1(f, x - numdr * 0.5)) / (numdr); }
+
+    void check() const {
+        if (ftol != -1 && ftol <= 0.0) {
+            std::cerr << "ftol=" << ftol << " too small\n" << std::endl;
+            abort();
+        }
+        if (umaxtol != -1 && umaxtol <= 0.0) {
+            std::cerr << "umaxtol=" << umaxtol << " too small\n" << std::endl;
+            abort();
+        }
+        if (fmaxtol != -1 && fmaxtol <= 0.0) {
+            std::cerr << "fmaxtol=" << fmaxtol << " too small\n" << std::endl;
+            abort();
+        }
+    }
+
+  public:
+    struct data {
+        std::vector<T> r2;      // r2 for intervals
+        std::vector<T> c;       // c for coefficents
+        T rmin2 = 0, rmax2 = 0; // useful to save these with table
+        bool empty() const { return r2.empty() && c.empty(); }
+    };
+
+    void setTolerance(T _utol, T _ftol = -1, T _umaxtol = -1, T _fmaxtol = -1) {
+        utol = _utol;
+        ftol = _ftol;
+        umaxtol = _umaxtol;
+        fmaxtol = _fmaxtol;
+    }
+
+    void setNumdr(T _numdr) { numdr = _numdr; }
+};
+
+/**
+ * @brief Andrea table with logarithmic search
+ *
+ * Tabulator with logarithmic search.
+ * Code mainly from MolSim (Per Linse) with some upgrades
+ * Reference: doi:10/frzp4d
+ *
+ * @note Slow on Intel compiler
+ */
+template <typename T = double> class Andrea : public TabulatorBase<T> {
+  private:
+    typedef TabulatorBase<T> base; // for convenience
+    int mngrid = 1200;             // Max number of controlpoints
+    int ndr = 100;                 // Max number of trials to decr dr
+    T drfrac = 0.9;                // Multiplicative factor to decr dr
+
+    std::vector<T> SetUBuffer(T, T zlow, T, T zupp, T u0low, T u1low, T u2low, T u0upp, T u1upp, T u2upp) {
+
+        // Zero potential and force return no coefficients
+        if (std::fabs(u0low) < 1e-9)
+            if (std::fabs(u1low) < 1e-9)
+                return {0, 0, 0, 0, 0, 0, 0};
+
+        T dz1 = zupp - zlow;
+        T dz2 = dz1 * dz1;
+        T dz3 = dz2 * dz1;
+        T w0low = u0low;
+        T w1low = u1low;
+        T w2low = u2low;
+        T w0upp = u0upp;
+        T w1upp = u1upp;
+        T w2upp = u2upp;
+        T c0 = w0low;
+        T c1 = w1low;
+        T c2 = w2low * 0.5;
+        T a = 6 * (w0upp - c0 - c1 * dz1 - c2 * dz2) / dz3;
+        T b = 2 * (w1upp - c1 - 2 * c2 * dz1) / dz2;
+        T c = (w2upp - 2 * c2) / dz1;
+        T c3 = (10 * a - 12 * b + 3 * c) / 6;
+        T c4 = (-15 * a + 21 * b - 6 * c) / (6 * dz1);
+        T c5 = (2 * a - 3 * b + c) / (2 * dz2);
+
+        return {zlow, c0, c1, c2, c3, c4, c5};
+    }
+
+    /**
+     * @returns boolean vector.
+     * - `[0]==true`: tolerance is approved,
+     * - `[1]==true` Repulsive part is found.
+     */
+    std::vector<bool> CheckUBuffer(std::vector<T> &ubuft, T rlow, T rupp, std::function<T(T)> f) const {
+
+        // Number of points to control
+        int ncheck = 11;
+        T dr = (rupp - rlow) / (ncheck - 1);
+        std::vector<bool> vb(2, false);
+
+        for (int i = 0; i < ncheck; i++) {
+            T r1 = rlow + dr * ((T)i);
+            T r2 = r1 * r1;
+            T u0 = f(r2);
+            T u1 = base::f1(f, r2);
+            T dz = r2 - rlow * rlow;
+            T usum =
+                ubuft.at(1) +
+                dz * (ubuft.at(2) + dz * (ubuft.at(3) + dz * (ubuft.at(4) + dz * (ubuft.at(5) + dz * ubuft.at(6)))));
+
+            T fsum = ubuft.at(2) +
+                     dz * (2 * ubuft.at(3) + dz * (3 * ubuft.at(4) + dz * (4 * ubuft.at(5) + dz * (5 * ubuft.at(6)))));
+
+            if (std::fabs(usum - u0) > base::utol)
+                return vb;
+            if (base::ftol != -1 && std::fabs(fsum - u1) > base::ftol)
+                return vb;
+            if (base::umaxtol != -1 && std::fabs(usum) > base::umaxtol)
+                vb[1] = true;
+            if (base::fmaxtol != -1 && std::fabs(usum) > base::fmaxtol)
+                vb[1] = true;
+        }
+        vb[0] = true;
+        return vb;
+    }
+
+  public:
+    /**
+     * @brief Get tabulated value at f(x)
+     * @param d Table data
+     * @param r2 value
+     */
+    inline T eval(const typename base::data &d, T r2) const {
+        size_t pos = std::lower_bound(d.r2.begin(), d.r2.end(), r2) - d.r2.begin() - 1;
+        size_t pos6 = 6 * pos;
+        assert((pos6+5)<d.c.size() && "out of bounds");
+        T dz = r2 - d.r2[pos];
+        return d.c[pos6] +
+               dz * (d.c[pos6 + 1] +
+                     dz * (d.c[pos6 + 2] + dz * (d.c[pos6 + 3] + dz * (d.c[pos6 + 4] + dz * (d.c[pos6 + 5])))));
+    }
+
+    /**
+     * @brief Get tabulated value at df(x)/dx
+     * @param d Table data
+     * @param r2 value
+     */
+    T evalDer(const typename base::data &d, T r2) const {
+        size_t pos = std::lower_bound(d.r2.begin(), d.r2.end(), r2) - d.r2.begin() - 1;
+        size_t pos6 = 6 * pos;
+        T dz = r2 - d.r2[pos];
+        return (d.c[pos6 + 1] +
+                dz * (2.0 * d.c[pos6 + 2] +
+                      dz * (3.0 * d.c[pos6 + 3] + dz * (4.0 * d.c[pos6 + 4] + dz * (5.0 * d.c[pos6 + 5])))));
+    }
+
+    /**
+     * @brief Tabulate f(x) in interval ]min,max]
+     */
+    typename base::data generate(std::function<T(T)> f, double rmin, double rmax) {
+        rmin = std::sqrt(rmin);
+        rmax = std::sqrt(rmax);
+        base::check();
+        typename base::data td;
+        td.rmin2 = rmin * rmin;
+        td.rmax2 = rmax * rmax;
+
+        T rumin = rmin;
+        T rmax2 = rmax * rmax;
+        T dr = rmax - rmin;
+        T rupp = rmax;
+        T zupp = rmax2;
+        bool repul = false; // Stop tabulation if repul is true
+
+        td.r2.push_back(zupp);
+
+        int i;
+        for (i = 0; i < mngrid; i++) {
+            T rlow = rupp;
+            T zlow;
+            std::vector<T> ubuft;
+            int j;
+
+            dr = (rupp - rmin);
+
+            for (j = 0; j < ndr; j++) {
+                zupp = rupp * rupp;
+                rlow = rupp - dr;
+                if (rumin > rlow)
+                    rlow = rumin;
+
+                zlow = rlow * rlow;
+
+                T u0low = f(zlow);
+                T u1low = base::f1(f, zlow);
+                T u2low = base::f2(f, zlow);
+                T u0upp = f(zupp);
+                T u1upp = base::f1(f, zupp);
+                T u2upp = base::f2(f, zupp);
+
+                ubuft = SetUBuffer(rlow, zlow, rupp, zupp, u0low, u1low, u2low, u0upp, u1upp, u2upp);
+                std::vector<bool> vb = CheckUBuffer(ubuft, rlow, rupp, f);
+                repul = vb[1];
+                if (vb[0]) {
+                    rupp = rlow;
+                    break;
+                }
+                dr *= drfrac;
+            }
+
+            if (j >= ndr)
+                throw std::runtime_error("Andrea spline: try to increase utol/ftol");
+            if (ubuft.size() != 7)
+                throw std::runtime_error("Andrea spline: wrong size of ubuft, min value + 6 coefficients");
+
+            td.r2.push_back(zlow);
+            for (size_t k = 1; k < ubuft.size(); k++)
+                td.c.push_back(ubuft.at(k));
+
+            // Entered a highly repulsive part, stop tabulation
+            if (repul) {
+                rumin = rlow;
+                td.rmin2 = rlow * rlow;
+            }
+            if (rlow <= rumin || repul)
+                break;
+        }
+
+        if (i >= mngrid)
+            throw std::runtime_error("Andrea spline: try to increase utol/ftol");
+
+            // create final reversed c and r2
+#if __cplusplus >= 201703L
+        // C++17 only code
+        assert(td.c.size() % 6 == 0);
+        assert(td.c.size() / (td.r2.size() - 1) == 6);
+        assert(std::is_sorted(td.r2.rbegin(), td.r2.rend()));
+        std::reverse(td.r2.begin(), td.r2.end());       // reverse all elements
+        for (size_t i = 0; i < td.c.size() / 2; i += 6) // reverse knot order in packets of six
+            std::swap_ranges(td.c.begin() + i, td.c.begin() + i + 6, td.c.end() - i - 6); // c++17 only
+        return td;
+#else
+        typename base::data tdsort;
+        tdsort.rmax2 = td.rmax2;
+        tdsort.rmin2 = td.rmin2;
+
+        // reverse copy all elements in r2
+        tdsort.r2.resize(td.r2.size());
+        std::reverse_copy(td.r2.begin(), td.r2.end(), tdsort.r2.begin());
+
+        // sanity check before reverse knot copy
+        assert(std::is_sorted(td.r2.rbegin(), td.r2.rend()));
+        assert(td.c.size() % 6 == 0);
+        assert(td.c.size() / (td.r2.size() - 1) == 6);
+
+        // reverse copy knots
+        tdsort.c.resize(td.c.size());
+        auto dst = tdsort.c.end();
+        for (auto src = td.c.begin(); src != td.c.end(); src += 6)
+            std::copy(src, src + 6, dst -= 6);
+        return tdsort;
 #endif
+    }
+};
+
+} // namespace Tabulate
 
 /**
  * @brief Base class for truncation schemes
@@ -289,6 +487,11 @@ TEST_CASE("qPochhammerSymbol") {
  * call these functions directly from the derived class.
  */
 class SchemeBase {
+  protected:
+    double invcutoff; // inverse cutoff distance
+    double cutoff2;   // square cutoff distance
+    double kappa;     // inverse Debye-length
+
   public:
     std::string doi;     //!< DOI for original citation
     std::string name;    //!< Descriptive name
@@ -318,6 +521,11 @@ class SchemeBase {
      */
     double calc_dielectric(double M2V) { return (M2V * T0 + 2.0 * M2V + 1.0) / (M2V * T0 - M2V + 1.0); }
 
+    virtual double short_range_function(double q) const = 0;
+    virtual double short_range_function_derivative(double q) const = 0;
+    virtual double short_range_function_second_derivative(double q) const = 0;
+    virtual double short_range_function_third_derivative(double q) const = 0;
+
     /**
      * @brief interaction energy between two ions
      * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
@@ -333,14 +541,15 @@ class SchemeBase {
      * @note Calling from base class may be slow as it's virtual; call from derived class for better performance.
      */
     virtual double ion_ion_energy(double, double, double) const = 0;
+    virtual double ion_dipole_energy(double, const vec3 &, const vec3 &) const = 0;
+    virtual double dipole_dipole_energy(const vec3 &, const vec3 &, const vec3 &) const = 0;
 
-    virtual vec3 ion_ion_force(double, double, const vec3&) const = 0;
+    virtual vec3 ion_ion_force(double, double, const vec3 &) const = 0;
+    virtual vec3 ion_dipole_force(double, const vec3 &, const vec3 &) const = 0;
+    virtual vec3 dipole_dipole_force(const vec3 &, const vec3 &, const vec3 &) const = 0;
 
     virtual double ion_potential(double, double) const = 0;
-
     virtual double dipole_potential(const vec3 &, const vec3 &) const = 0;
-
-    virtual double dipole_dipole_energy(const vec3 &, const vec3 &, const vec3 &) const = 0;
 
     // add remaining funtions here...
 
@@ -369,17 +578,12 @@ class SchemeBase {
  * Derived function need only implement short range functions and derivatives thereof.
  */
 template <class T> class EnergyImplementation : public SchemeBase {
-  private:
-    double invcutoff; // inverse cutoff distance
-    double cutoff2;   // square cutoff distance
-    double kappa;     // inverse Debye-length
-
   public:
-    EnergyImplementation(Scheme type, double cutoff, double debye_length = infinity)
-        : SchemeBase(type, cutoff, debye_length) {
+    EnergyImplementation(Scheme type, double cutoff, double debyelength = infinity)
+        : SchemeBase(type, cutoff, debyelength) {
         invcutoff = 1.0 / cutoff;
         cutoff2 = cutoff * cutoff;
-        kappa = 1.0 / debye_length;
+        kappa = 1.0 / debyelength;
     }
 
     /**
@@ -519,7 +723,7 @@ template <class T> class EnergyImplementation : public SchemeBase {
      * @f]
      * where @f[ {\bf E}(z, {\bf r}) @f] is the field from the ion at the location of the dipole.
      */
-    inline double ion_dipole_energy(double z, const vec3 &mu, const vec3 &r) const {
+    inline double ion_dipole_energy(double z, const vec3 &mu, const vec3 &r) const override {
         // Both expressions below gives same answer. Keep for possible optimization in future.
         // return -mu.dot(ion_field(z,r)); // field from charge interacting with dipole
         return z * dipole_potential(mu, -r); // potential of dipole interacting with charge
@@ -571,7 +775,9 @@ template <class T> class EnergyImplementation : public SchemeBase {
      * @f]
      * where @f[ {\bf E}(\boldsymbol{\mu}, {\bf r}) @f] is the field from the dipole at the location of the ion.
      */
-    inline vec3 ion_dipole_force(double z, const vec3 &mu, const vec3 &r) const { return z * dipole_field(mu, r); }
+    inline vec3 ion_dipole_force(double z, const vec3 &mu, const vec3 &r) const override {
+        return z * dipole_field(mu, r);
+    }
 
     /**
      * @brief dipole-dipole interaction energy
@@ -599,7 +805,7 @@ template <class T> class EnergyImplementation : public SchemeBase {
      * (\boldsymbol{\mu}_B \cdot {\bf \hat{r}}){\bf \hat{r}}}{|{\bf r}|^4}.
      * @f]
      */
-    inline vec3 dipole_dipole_force(const vec3 &muA, const vec3 &muB, const vec3 &r) const {
+    inline vec3 dipole_dipole_force(const vec3 &muA, const vec3 &muB, const vec3 &r) const override {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
@@ -674,10 +880,10 @@ class Plain : public EnergyImplementation<Plain> {
         self_energy_prefactor = {0.0, 0.0};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     };
-    inline double short_range_function(double) const { return 1.0; };
-    inline double short_range_function_derivative(double) const { return 0.0; }
-    inline double short_range_function_second_derivative(double) const { return 0.0; }
-    inline double short_range_function_third_derivative(double) const { return 0.0; }
+    inline double short_range_function(double) const override { return 1.0; };
+    inline double short_range_function_derivative(double) const override { return 0.0; }
+    inline double short_range_function_second_derivative(double) const override { return 0.0; }
+    inline double short_range_function_third_derivative(double) const override { return 0.0; }
 #ifdef NLOHMANN_JSON_HPP
     inline Plain(const nlohmann::json &j) : Plain(j.value("debyelength", infinity)) {}
 
@@ -685,155 +891,6 @@ class Plain : public EnergyImplementation<Plain> {
     inline void _to_json(nlohmann::json &) const override {}
 #endif
 };
-
-#ifdef DOCTEST_LIBRARY_INCLUDED
-
-TEST_CASE("[CoulombGalore] plain") {
-    using doctest::Approx;
-    double cutoff = 29.0;   // cutoff distance
-    double zA = 2.0;        // charge
-    double zB = 3.0;        // charge
-    vec3 muA = {19, 7, 11}; // dipole moment
-    vec3 muB = {13, 17, 5}; // dipole moment
-    vec3 r = {23, 0, 0};    // distance vector
-    vec3 rh = {1, 0, 0};    // normalized distance vector
-    Plain pot;
-
-    // Test self energy
-    CHECK(pot.self_energy({zA * zB, muA.norm() * muB.norm()}) == Approx(0.0));
-
-    // Test short-ranged function
-    CHECK(pot.short_range_function(0.5) == Approx(1.0));
-    CHECK(pot.short_range_function_derivative(0.5) == Approx(0.0));
-    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(0.0));
-    CHECK(pot.short_range_function_third_derivative(0.5) == Approx(0.0));
-
-    testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
-
-    // Test potentials
-    CHECK(pot.ion_potential(zA, cutoff + 1.0) == Approx(0.06666666667));
-    CHECK(pot.ion_potential(zA, r.norm()) == Approx(0.08695652174));
-    CHECK(pot.dipole_potential(muA, (cutoff + 1.0) * rh) == Approx(0.02111111111));
-    CHECK(pot.dipole_potential(muA, r) == Approx(0.03591682420));
-
-    // Test fields
-    CHECK(pot.ion_field(zA, (cutoff + 1.0) * rh).norm() == Approx(0.002222222222));
-    vec3 E_ion = pot.ion_field(zA, r);
-    CHECK(E_ion[0] == Approx(0.003780718336));
-    CHECK(E_ion.norm() == Approx(0.003780718336));
-    CHECK(pot.dipole_field(muA, (cutoff + 1.0) * rh).norm() == Approx(0.001487948846));
-    vec3 E_dipole = pot.dipole_field(muA, r);
-    CHECK(E_dipole[0] == Approx(0.003123202104));
-    CHECK(E_dipole[1] == Approx(-0.0005753267034));
-    CHECK(E_dipole[2] == Approx(-0.0009040848196));
-
-    // Test energies
-    CHECK(pot.ion_ion_energy(zA, zB, (cutoff + 1.0)) == Approx(0.2));
-    CHECK(pot.ion_ion_energy(zA, zB, r.norm()) == Approx(0.2608695652));
-    CHECK(pot.ion_dipole_energy(zA, muB, (cutoff + 1.0) * rh) == Approx(-0.02888888889));
-    CHECK(pot.ion_dipole_energy(zA, muB, r) == Approx(-0.04914933837));
-    CHECK(pot.dipole_dipole_energy(muA, muB, (cutoff + 1.0) * rh) == Approx(-0.01185185185));
-    CHECK(pot.dipole_dipole_energy(muA, muB, r) == Approx(-0.02630064930));
-
-    // Test forces
-    CHECK(pot.ion_ion_force(zA, zB, (cutoff + 1.0) * rh).norm() == Approx(0.006666666667));
-    vec3 F_ionion = pot.ion_ion_force(zA, zB, r);
-    CHECK(F_ionion[0] == Approx(0.01134215501));
-    CHECK(F_ionion.norm() == Approx(0.01134215501));
-    CHECK(pot.ion_dipole_force(zB, muA, (cutoff + 1.0) * rh).norm() == Approx(0.004463846540));
-    vec3 F_iondipole = pot.ion_dipole_force(zB, muA, r);
-    CHECK(F_iondipole[0] == Approx(0.009369606312));
-    CHECK(F_iondipole[1] == Approx(-0.001725980110));
-    CHECK(F_iondipole[2] == Approx(-0.002712254459));
-    CHECK(pot.dipole_dipole_force(muA, muB, (cutoff + 1.0) * rh).norm() == Approx(0.002129033733));
-    vec3 F_dipoledipole = pot.dipole_dipole_force(muA, muB, r);
-    CHECK(F_dipoledipole[0] == Approx(0.003430519474));
-    CHECK(F_dipoledipole[1] == Approx(-0.004438234569));
-    CHECK(F_dipoledipole[2] == Approx(-0.002551448858));
-
-    // Approximate dipoles by two charges respectively and compare to point-dipoles
-    double d = 1e-3;                          // small distance
-    vec3 r_muA_1 = muA / muA.norm() * d;      // a small distance from dipole A ( the origin )
-    vec3 r_muA_2 = -muA / muA.norm() * d;     // a small distance from dipole B ( the origin )
-    vec3 r_muB_1 = r + muB / muB.norm() * d;  // a small distance from dipole B ( 'r' )
-    vec3 r_muB_2 = r - muB / muB.norm() * d;  // a small distance from dipole B ( 'r' )
-    double z_muA_1 = muA.norm() / (2.0 * d);  // charge 1 of approximative dipole A
-    double z_muA_2 = -muA.norm() / (2.0 * d); // charge 2 of approximative dipole A
-    double z_muB_1 = muB.norm() / (2.0 * d);  // charge 1 of approximative dipole B
-    double z_muB_2 = -muB.norm() / (2.0 * d); // charge 2 of approximative dipole B
-    vec3 muA_approx = r_muA_1 * z_muA_1 + r_muA_2 * z_muA_2;
-    vec3 muB_approx = r_muB_1 * z_muB_1 + r_muB_2 * z_muB_2;
-    vec3 r_z1r = r - r_muA_1; // distance from charge 1 of dipole A to 'r'
-    vec3 r_z2r = r - r_muA_2; // distance from charge 2 of dipole A to 'r'
-
-    // Check that dipole moment of the two charges corresponds to that from the dipole
-    CHECK(muA[0] == Approx(muA_approx[0]));
-    CHECK(muA[1] == Approx(muA_approx[1]));
-    CHECK(muA[2] == Approx(muA_approx[2]));
-    CHECK(muB[0] == Approx(muB_approx[0]));
-    CHECK(muB[1] == Approx(muB_approx[1]));
-    CHECK(muB[2] == Approx(muB_approx[2]));
-
-    // Check potentials
-    double potA = pot.dipole_potential(muA, r);
-    double potA_1 = pot.ion_potential(z_muA_1, r_z1r.norm());
-    double potA_2 = pot.ion_potential(z_muA_2, r_z2r.norm());
-    CHECK(potA == Approx(potA_1 + potA_2));
-
-    // Check fields
-    vec3 fieldA = pot.dipole_field(muA, r);
-    vec3 fieldA_1 = pot.ion_field(z_muA_1, r_z1r);
-    vec3 fieldA_2 = pot.ion_field(z_muA_2, r_z2r);
-    CHECK(fieldA[0] == Approx(fieldA_1[0] + fieldA_2[0]));
-    CHECK(fieldA[1] == Approx(fieldA_1[1] + fieldA_2[1]));
-    CHECK(fieldA[2] == Approx(fieldA_1[2] + fieldA_2[2]));
-
-    // Check energies
-    double EA = pot.ion_dipole_energy(zB, muA, -r);
-    double EA_1 = pot.ion_ion_energy(zB, z_muA_1, r_z1r.norm());
-    double EA_2 = pot.ion_ion_energy(zB, z_muA_2, r_z2r.norm());
-    CHECK(EA == Approx(EA_1 + EA_2));
-
-    // Check forces
-    vec3 F_ionion_11 = pot.ion_ion_force(z_muA_1, z_muB_1, r_muA_1 - r_muB_1);
-    vec3 F_ionion_12 = pot.ion_ion_force(z_muA_1, z_muB_2, r_muA_1 - r_muB_2);
-    vec3 F_ionion_21 = pot.ion_ion_force(z_muA_2, z_muB_1, r_muA_2 - r_muB_1);
-    vec3 F_ionion_22 = pot.ion_ion_force(z_muA_2, z_muB_2, r_muA_2 - r_muB_2);
-    vec3 F_dipoledipole_approx = F_ionion_11 + F_ionion_12 + F_ionion_21 + F_ionion_22;
-    CHECK(F_dipoledipole[0] == Approx(F_dipoledipole_approx[0]));
-    CHECK(F_dipoledipole[1] == Approx(F_dipoledipole_approx[1]));
-    CHECK(F_dipoledipole[2] == Approx(F_dipoledipole_approx[2]));
-
-    // Check Yukawa-interactions
-    double debye_length = 23.0;
-    Plain potY(debye_length);
-
-    // Test potentials
-    CHECK(potY.ion_potential(zA, cutoff + 1.0) == Approx(0.01808996296));
-    CHECK(potY.ion_potential(zA, r.norm()) == Approx(0.03198951663));
-    CHECK(potY.dipole_potential(muA, (cutoff + 1.0) * rh) == Approx(0.01320042949));
-    CHECK(potY.dipole_potential(muA, r) == Approx(0.02642612243));
-
-    // Test fields
-    CHECK(potY.ion_field(zA, (cutoff + 1.0) * rh).norm() == Approx(0.001389518894));
-    vec3 E_ion_Y = potY.ion_field(zA, r);
-    CHECK(E_ion_Y[0] == Approx(0.002781697098));
-    CHECK(E_ion_Y.norm() == Approx(0.002781697098));
-    CHECK(potY.dipole_field(muA, (cutoff + 1.0) * rh).norm() == Approx(0.001242154748));
-    vec3 E_dipole_Y = potY.dipole_field(muA, r);
-    CHECK(E_dipole_Y[0] == Approx(0.002872404612));
-    CHECK(E_dipole_Y[1] == Approx(-0.0004233017324));
-    CHECK(E_dipole_Y[2] == Approx(-0.0006651884364));
-
-    // Test forces
-    CHECK(potY.dipole_dipole_force(muA, muB, (cutoff + 1.0) * rh).norm() == Approx(0.001859094075));
-    vec3 F_dipoledipole_Y = potY.dipole_dipole_force(muA, muB, r);
-    CHECK(F_dipoledipole_Y[0] == Approx(0.003594120919));
-    CHECK(F_dipoledipole_Y[1] == Approx(-0.003809715590));
-    CHECK(F_dipoledipole_Y[2] == Approx(-0.002190126354));
-}
-
-#endif
 
 // -------------- Ewald real-space ---------------
 
@@ -854,7 +911,7 @@ class Ewald : public EnergyImplementation<Ewald> {
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
      */
-    inline Ewald(double cutoff, double alpha, double eps_sur = infinity, double debye_length = infinity)
+    inline Ewald(double cutoff, double alpha, double eps_sur=infinity, double debye_length = infinity)
         : EnergyImplementation(Scheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur) {
         name = "Ewald real-space";
         alphaRed = alpha * cutoff;
@@ -873,22 +930,22 @@ class Ewald : public EnergyImplementation<Ewald> {
                 (2.0 * sqrt_pi * beta3 * std::erfc(beta) + (1.0 - 2.0 * beta2) * std::exp(-beta2))};
     }
 
-    inline double short_range_function(double q) const {
+    inline double short_range_function(double q) const override {
         return 0.5 *
                (std::erfc(alphaRed * q + beta) * std::exp(4.0 * alphaRed * beta * q) + std::erfc(alphaRed * q - beta));
     }
-    inline double short_range_function_derivative(double q) const {
+    inline double short_range_function_derivative(double q) const override {
         double expC = std::exp(-powi(alphaRed * q - beta, 2));
         double erfcC = std::erfc(alphaRed * q + beta);
         return (-2.0 * alphaRed / sqrt_pi * expC + 2.0 * alphaRed * beta * erfcC * std::exp(4.0 * alphaRed * beta * q));
     }
-    inline double short_range_function_second_derivative(double q) const {
+    inline double short_range_function_second_derivative(double q) const override {
         double expC = std::exp(-powi(alphaRed * q - beta, 2));
         double erfcC = std::erfc(alphaRed * q + beta);
         return (4.0 * alphaRed2 / sqrt_pi * (alphaRed * q - 2.0 * beta) * expC +
                 8.0 * alphaRed2 * beta2 * erfcC * std::exp(4.0 * alphaRed * beta * q));
     }
-    inline double short_range_function_third_derivative(double q) const {
+    inline double short_range_function_third_derivative(double q) const override {
         double expC = std::exp(-powi(alphaRed * q - beta, 2));
         double erfcC = std::erfc(alphaRed * q + beta);
         return (4.0 * alphaRed3 / sqrt_pi *
@@ -911,34 +968,6 @@ class Ewald : public EnergyImplementation<Ewald> {
     }
 #endif
 };
-
-#ifdef DOCTEST_LIBRARY_INCLUDED
-
-TEST_CASE("[CoulombGalore] Ewald real-space") {
-    using doctest::Approx;
-    double cutoff = 29.0; // cutoff distance
-    double alpha = 0.1;   // damping-parameter
-    double eps_sur = infinity;
-    Ewald pot(cutoff, alpha, eps_sur);
-
-    // Test short-ranged function
-    CHECK(pot.short_range_function(0.5) == Approx(0.04030497436));
-    CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.399713585));
-    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.36159125));
-    CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
-
-    testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
-
-    double debye_length = 23.0;
-    Ewald potY(cutoff, alpha, eps_sur, debye_length);
-
-    // Test short-ranged function
-    CHECK(potY.short_range_function(0.5) == Approx(0.07306333588));
-    CHECK(potY.short_range_function_derivative(0.5) == Approx(-0.63444119));
-    CHECK(potY.short_range_function_second_derivative(0.5) == Approx(4.423133599));
-    CHECK(potY.short_range_function_third_derivative(0.5) == Approx(-19.85937171));
-}
-#endif
 
 // -------------- Wolf ---------------
 
@@ -964,14 +993,16 @@ class Wolf : public EnergyImplementation<Wolf> {
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
 
-    inline double short_range_function(double q) const { return (std::erfc(alphaRed * q) - q * std::erfc(alphaRed)); }
-    inline double short_range_function_derivative(double q) const {
+    inline double short_range_function(double q) const override {
+        return (std::erfc(alphaRed * q) - q * std::erfc(alphaRed));
+    }
+    inline double short_range_function_derivative(double q) const override {
         return (-2.0 * std::exp(-alphaRed2 * q * q) * alphaRed / pi_sqrt - std::erfc(alphaRed));
     }
-    inline double short_range_function_second_derivative(double q) const {
+    inline double short_range_function_second_derivative(double q) const override {
         return 4.0 * std::exp(-alphaRed2 * q * q) * alphaRed2 * alphaRed * q / pi_sqrt;
     }
-    inline double short_range_function_third_derivative(double q) const {
+    inline double short_range_function_third_derivative(double q) const override {
         return -8.0 * std::exp(-alphaRed2 * q * q) * alphaRed2 * alphaRed * (alphaRed2 * q * q - 0.5) / pi_sqrt;
     }
 
@@ -985,34 +1016,50 @@ class Wolf : public EnergyImplementation<Wolf> {
 #endif
 };
 
-#ifdef DOCTEST_LIBRARY_INCLUDED
-
-TEST_CASE("[CoulombGalore] Wolf") {
-    using doctest::Approx;
-    double cutoff = 29.0; // cutoff distance
-    double alpha = 0.1;   // damping-parameter
-    Wolf pot(cutoff, alpha);
-
-    // Test short-ranged function
-    CHECK(pot.short_range_function(0.5) == Approx(0.04028442542));
-    CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.3997546829));
-    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.36159125));
-    CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
-    CHECK(pot.short_range_function(1.0) == Approx(0.0));
-
-    testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
-}
-
-#endif
-
 // -------------- qPotential ---------------
+template <int order> class qPotentialFixedOrder : public EnergyImplementation<qPotentialFixedOrder<order>> {
+  public:
+    typedef EnergyImplementation<qPotentialFixedOrder<order>> base;
+    using base::name;
+    using base::self_energy_prefactor;
+    using base::T0;
+    /**
+     * @param cutoff distance cutoff
+     * @param order number of moments to cancel
+     */
+    inline qPotentialFixedOrder(double cutoff) : base(Scheme::qpotential, cutoff) {
+        name = "qpotential";
+        self_energy_prefactor = {-1.0, -1.0};
+        T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
+    }
+
+    inline double short_range_function(double q) const override { return qPochhammerSymbol(q, 0, order); }
+    inline double short_range_function_derivative(double q) const override {
+        return qPochhammerSymbolDerivative(q, 0, order);
+    }
+    inline double short_range_function_second_derivative(double q) const override {
+        return qPochhammerSymbolSecondDerivative(q, 0, order);
+    }
+    inline double short_range_function_third_derivative(double q) const override {
+        return qPochhammerSymbolThirdDerivative(q, 0, order);
+    }
+
+#ifdef NLOHMANN_JSON_HPP
+    inline qPotentialFixedOrder(const nlohmann::json &j) : qPotentialFixedOrder(j.at("cutoff").get<double>()) {}
+
+  private:
+    inline void _to_json(nlohmann::json &j) const override {
+        j = {{ "order", order }};
+    }
+#endif
+};
 
 /**
  * @brief qPotential scheme
  */
 class qPotential : public EnergyImplementation<qPotential> {
   private:
-    int order; //!< Number of moment to cancel
+    int order; //!< Number of moments to cancel
 
   public:
     /**
@@ -1025,12 +1072,14 @@ class qPotential : public EnergyImplementation<qPotential> {
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
 
-    inline double short_range_function(double q) const { return qPochhammerSymbol(q, 0, order); }
-    inline double short_range_function_derivative(double q) const { return qPochhammerSymbolDerivative(q, 0, order); }
-    inline double short_range_function_second_derivative(double q) const {
+    inline double short_range_function(double q) const override { return qPochhammerSymbol(q, 0, order); }
+    inline double short_range_function_derivative(double q) const override {
+        return qPochhammerSymbolDerivative(q, 0, order);
+    }
+    inline double short_range_function_second_derivative(double q) const override {
         return qPochhammerSymbolSecondDerivative(q, 0, order);
     }
-    inline double short_range_function_third_derivative(double q) const {
+    inline double short_range_function_third_derivative(double q) const override {
         return qPochhammerSymbolThirdDerivative(q, 0, order);
     }
 
@@ -1044,32 +1093,6 @@ class qPotential : public EnergyImplementation<qPotential> {
     }
 #endif
 };
-
-#ifdef DOCTEST_LIBRARY_INCLUDED
-
-TEST_CASE("[CoulombGalore] qPotential") {
-    using doctest::Approx;
-    double cutoff = 29.0; // cutoff distance
-    int order = 4;        // number of higher order moments to cancel - 1
-    qPotential pot(cutoff, order);
-    // Test short-ranged function
-    CHECK(pot.short_range_function(0.5) == Approx(0.3076171875));
-    CHECK(pot.short_range_function_derivative(0.5) == Approx(-1.453125));
-    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(1.9140625));
-    CHECK(pot.short_range_function_third_derivative(0.5) == Approx(17.25));
-    CHECK(pot.short_range_function(1.0) == Approx(0.0));
-    CHECK(pot.short_range_function_derivative(1.0) == Approx(0.0));
-    CHECK(pot.short_range_function_second_derivative(1.0) == Approx(0.0));
-    CHECK(pot.short_range_function_third_derivative(1.0) == Approx(0.0));
-    CHECK(pot.short_range_function(0.0) == Approx(1.0));
-    CHECK(pot.short_range_function_derivative(0.0) == Approx(-1.0));
-    CHECK(pot.short_range_function_second_derivative(0.0) == Approx(-2.0));
-    CHECK(pot.short_range_function_third_derivative(0.0) == Approx(0.0));
-
-    testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
-}
-
-#endif
 
 // -------------- Poisson --------------- Remove?!
 
@@ -1089,14 +1112,14 @@ class PoissonSimple : public EnergyImplementation<PoissonSimple> {
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
 
-    inline double short_range_function(double q) const {
+    inline double short_range_function(double q) const override {
         double tmp = 0;
         for (signed int c = 0; c < C; c++)
             tmp += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * powi(q, c);
         return powi(1.0 - q, D + 1) * tmp;
     }
 
-    inline double short_range_function_derivative(double q) const {
+    inline double short_range_function_derivative(double q) const override {
         double tmp1 = 1.0;
         double tmp2 = 0.0;
         for (signed int c = 1; c < C; c++) {
@@ -1106,11 +1129,11 @@ class PoissonSimple : public EnergyImplementation<PoissonSimple> {
         return (-double(D + 1) * powi(1.0 - q, D) * tmp1 + powi(1.0 - q, D + 1) * tmp2);
     }
 
-    inline double short_range_function_second_derivative(double q) const {
+    inline double short_range_function_second_derivative(double q) const override {
         return double(binomial(C + D, C) * D) * powi(1.0 - q, D - 1) * powi(q, C - 1);
     };
 
-    inline double short_range_function_third_derivative(double q) const {
+    inline double short_range_function_third_derivative(double q) const override {
         return double(binomial(C + D, C) * D) * powi(1.0 - q, D - 2) * powi(q, C - 2) *
                ((2.0 - double(C + D)) * q + double(C) - 1.0);
     };
@@ -1185,7 +1208,8 @@ class Poisson : public EnergyImplementation<Poisson> {
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) +
              short_range_function(0.0); // Is this OK for Yukawa-interactions?
     }
-    inline double short_range_function(double q) const {
+
+    inline double short_range_function(double q) const override {
         double tmp = 0;
         double qp = q;
         if (yukawa)
@@ -1195,7 +1219,7 @@ class Poisson : public EnergyImplementation<Poisson> {
         return powi(1.0 - qp, D + 1) * tmp;
     }
 
-    inline double short_range_function_derivative(double q) const {
+    inline double short_range_function_derivative(double q) const override {
         double qp = q;
         double dqpdq = 1.0;
         if (yukawa) {
@@ -1214,7 +1238,7 @@ class Poisson : public EnergyImplementation<Poisson> {
         return dSdqp * dqpdq;
     }
 
-    inline double short_range_function_second_derivative(double q) const {
+    inline double short_range_function_second_derivative(double q) const override {
         double qp = q;
         double dqpdq = 1.0;
         double d2qpdq2 = 0.0;
@@ -1235,7 +1259,7 @@ class Poisson : public EnergyImplementation<Poisson> {
         return (d2Sdqp2 * dqpdq * dqpdq + dSdqp * d2qpdq2);
     };
 
-    inline double short_range_function_third_derivative(double q) const {
+    inline double short_range_function_third_derivative(double q) const override {
         double qp = q;
         double dqpdq = 1.0;
         double d2qpdq2 = 0.0;
@@ -1273,130 +1297,6 @@ class Poisson : public EnergyImplementation<Poisson> {
 #endif
 };
 
-#ifdef DOCTEST_LIBRARY_INCLUDED
-
-TEST_CASE("[CoulombGalore] Poisson") {
-    using doctest::Approx;
-    signed C = 3;         // number of cancelled derivatives at origin -2 (starting from second derivative)
-    signed D = 3;         // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
-    double cutoff = 29.0; // cutoff distance
-    Poisson pot33(cutoff, C, D);
-
-    // Test short-ranged function
-    CHECK(pot33.short_range_function(0.5) == Approx(0.15625));
-    CHECK(pot33.short_range_function_derivative(0.5) == Approx(-1.0));
-    CHECK(pot33.short_range_function_second_derivative(0.5) == Approx(3.75));
-    CHECK(pot33.short_range_function_third_derivative(0.5) == Approx(0.0));
-    CHECK(pot33.short_range_function_third_derivative(0.6) == Approx(-5.76));
-    CHECK(pot33.short_range_function(1.0) == Approx(0.0));
-    CHECK(pot33.short_range_function_derivative(1.0) == Approx(0.0));
-    CHECK(pot33.short_range_function_second_derivative(1.0) == Approx(0.0));
-    CHECK(pot33.short_range_function_third_derivative(1.0) == Approx(0.0));
-    CHECK(pot33.short_range_function(0.0) == Approx(1.0));
-    CHECK(pot33.short_range_function_derivative(0.0) == Approx(-2.0));
-    CHECK(pot33.short_range_function_second_derivative(0.0) == Approx(0.0));
-    CHECK(pot33.short_range_function_third_derivative(0.0) == Approx(0.0));
-
-    testDerivatives(pot33, 0.5); // Compare differentiation with numerical diff.
-
-    C = 4;                  // number of cancelled derivatives at origin -2 (starting from second derivative)
-    D = 3;                  // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
-    double zA = 2.0;        // charge
-    double zB = 3.0;        // charge
-    vec3 muA = {19, 7, 11}; // dipole moment
-    vec3 muB = {13, 17, 5}; // dipole moment
-    vec3 r = {23, 0, 0};    // distance vector
-    vec3 rh = {1, 0, 0};    // normalized distance vector
-    Poisson pot43(cutoff, C, D);
-
-    // Test short-ranged function
-    CHECK(pot43.short_range_function(0.5) == Approx(0.19921875));
-    CHECK(pot43.short_range_function_derivative(0.5) == Approx(-1.1484375));
-    CHECK(pot43.short_range_function_second_derivative(0.5) == Approx(3.28125));
-    CHECK(pot43.short_range_function_third_derivative(0.5) == Approx(6.5625));
-
-    // Test potentials
-    CHECK(pot43.ion_potential(zA, cutoff) == Approx(0.0));
-    CHECK(pot43.ion_potential(zA, r.norm()) == Approx(0.0009430652121));
-    CHECK(pot43.dipole_potential(muA, cutoff * rh) == Approx(0.0));
-    CHECK(pot43.dipole_potential(muA, r) == Approx(0.005750206554));
-
-    // Test fields
-    CHECK(pot43.ion_field(zA, cutoff * rh).norm() == Approx(0.0));
-    vec3 E_ion = pot43.ion_field(zA, r);
-    CHECK(E_ion[0] == Approx(0.0006052849004));
-    CHECK(E_ion.norm() == Approx(0.0006052849004));
-    CHECK(pot43.dipole_field(muA, cutoff * rh).norm() == Approx(0.0));
-    vec3 E_dipole = pot43.dipole_field(muA, r);
-    CHECK(E_dipole[0] == Approx(0.002702513754));
-    CHECK(E_dipole[1] == Approx(-0.00009210857180));
-    CHECK(E_dipole[2] == Approx(-0.0001447420414));
-
-    // Test energies
-    CHECK(pot43.ion_ion_energy(zA, zB, cutoff) == Approx(0.0));
-    CHECK(pot43.ion_ion_energy(zA, zB, r.norm()) == Approx(0.002829195636));
-    CHECK(pot43.ion_dipole_energy(zA, muB, cutoff * rh) == Approx(0.0));
-    CHECK(pot43.ion_dipole_energy(zA, muB, r) == Approx(-0.007868703705));
-    CHECK(pot43.dipole_dipole_energy(muA, muB, cutoff * rh) == Approx(0.0));
-    CHECK(pot43.dipole_dipole_energy(muA, muB, r) == Approx(-0.03284312288));
-
-    // Test forces
-    CHECK(pot43.ion_ion_force(zA, zB, cutoff * rh).norm() == Approx(0.0));
-    vec3 F_ionion = pot43.ion_ion_force(zA, zB, r);
-    CHECK(F_ionion[0] == Approx(0.001815854701));
-    CHECK(F_ionion.norm() == Approx(0.001815854701));
-    CHECK(pot43.ion_dipole_force(zB, muA, cutoff * rh).norm() == Approx(0.0));
-    vec3 F_iondipole = pot43.ion_dipole_force(zB, muA, r);
-    CHECK(F_iondipole[0] == Approx(0.008107541263));
-    CHECK(F_iondipole[1] == Approx(-0.0002763257154));
-    CHECK(F_iondipole[2] == Approx(-0.0004342261242));
-    CHECK(pot43.dipole_dipole_force(muA, muB, cutoff * rh).norm() == Approx(0.0));
-    vec3 F_dipoledipole = pot43.dipole_dipole_force(muA, muB, r);
-    CHECK(F_dipoledipole[0] == Approx(0.009216400961));
-    CHECK(F_dipoledipole[1] == Approx(-0.002797126801));
-    CHECK(F_dipoledipole[2] == Approx(-0.001608010094));
-
-    // Test Yukawa-interactions
-    C = 3;         // number of cancelled derivatives at origin -2 (starting from second derivative)
-    D = 3;         // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
-    cutoff = 29.0; // cutoff distance
-    double debye_length = 23.0;
-    Poisson potY(cutoff, C, D, debye_length);
-
-    // Test short-ranged function
-    CHECK(potY.short_range_function(0.5) == Approx(0.5673222034));
-    CHECK(potY.short_range_function_derivative(0.5) == Approx(-1.437372757));
-    CHECK(potY.short_range_function_second_derivative(0.5) == Approx(-2.552012334));
-    CHECK(potY.short_range_function_third_derivative(0.5) == Approx(4.384434209));
-
-    // Test potentials
-    CHECK(potY.ion_potential(zA, cutoff) == Approx(0.0));
-    CHECK(potY.ion_potential(zA, r.norm()) == Approx(0.003344219306));
-    CHECK(potY.dipole_potential(muA, cutoff * rh) == Approx(0.0));
-    CHECK(potY.dipole_potential(muA, r) == Approx(0.01614089171));
-
-    // Test fields
-    CHECK(potY.ion_field(zA, cutoff * rh).norm() == Approx(0.0));
-    vec3 E_ion_Y = potY.ion_field(zA, r);
-    CHECK(E_ion_Y[0] == Approx(0.001699041230));
-    CHECK(E_ion_Y.norm() == Approx(0.001699041230));
-    CHECK(potY.dipole_field(muA, cutoff * rh).norm() == Approx(0.0));
-    vec3 E_dipole_Y = potY.dipole_field(muA, r);
-    CHECK(E_dipole_Y[0] == Approx(0.004956265485));
-    CHECK(E_dipole_Y[1] == Approx(-0.0002585497523));
-    CHECK(E_dipole_Y[2] == Approx(-0.0004062924688));
-
-    // Test forces
-    CHECK(potY.dipole_dipole_force(muA, muB, cutoff * rh).norm() == Approx(0.0));
-    vec3 F_dipoledipole_Y = potY.dipole_dipole_force(muA, muB, r);
-    CHECK(F_dipoledipole_Y[0] == Approx(0.002987655338));
-    CHECK(F_dipoledipole_Y[1] == Approx(-0.005360251621));
-    CHECK(F_dipoledipole_Y[2] == Approx(-0.003081497308));
-
-    //CHECK(Poisson(cutoff, 1, -1).short_range_function(0.5) == Approx(Plain().short_range_function(0.5) ));
-}
-#endif
-
 // -------------- Fanourgakis ---------------
 
 /**
@@ -1415,19 +1315,19 @@ class Fanourgakis : public EnergyImplementation<Fanourgakis> {
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
 
-    inline double short_range_function(double q) const {
-        return powi(1.0 - q, 4) * (1.0 + 2.25 * q + 3.0 * q * q + 2.5 * q * q * q);
+    inline double short_range_function(double q) const override {
+        double q2 = q * q;
+        return powi(1.0 - q, 4) * (1.0 + 2.25 * q + 3.0 * q2 + 2.5 * q2 * q);
     }
-    inline double short_range_function_derivative(double q) const {
+    inline double short_range_function_derivative(double q) const override {
         return (-1.75 + 26.25 * powi(q, 4) - 42.0 * powi(q, 5) + 17.5 * powi(q, 6));
     }
-    inline double short_range_function_second_derivative(double q) const {
+    inline double short_range_function_second_derivative(double q) const override {
         return 105.0 * powi(q, 3) * powi(q - 1.0, 2);
     };
-    inline double short_range_function_third_derivative(double q) const {
+    inline double short_range_function_third_derivative(double q) const override {
         return 525.0 * powi(q, 2) * (q - 0.6) * (q - 1.0);
     };
-
 #ifdef NLOHMANN_JSON_HPP
     inline Fanourgakis(const nlohmann::json &j) : Fanourgakis(j.at("cutoff").get<double>()) {}
 
@@ -1436,84 +1336,111 @@ class Fanourgakis : public EnergyImplementation<Fanourgakis> {
 #endif
 };
 
-#ifdef DOCTEST_LIBRARY_INCLUDED
-TEST_CASE("[CoulombGalore] Fanourgakis") {
-    using doctest::Approx;
-    double cutoff = 29.0; // cutoff distance
-    Fanourgakis pot(cutoff);
-    // Test short-ranged function
-    CHECK(pot.short_range_function(0.5) == Approx(0.1992187500));
-    CHECK(pot.short_range_function_derivative(0.5) == Approx(-1.1484375));
-    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.28125));
-    CHECK(pot.short_range_function_third_derivative(0.5) == Approx(6.5625));
+#ifdef NLOHMANN_JSON_HPP
+std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
+    const std::map<std::string, Scheme> m = {{"plain", Scheme::plain},
+                                             {"qpotential", Scheme::qpotential},
+                                             {"wolf", Scheme::wolf},
+                                             {"poisson", Scheme::poisson},
+                                             {"poissonsimple", Scheme::poissonsimple},
+                                             {"spline", Scheme::spline},
+                                             {"fanourgakis", Scheme::fanourgakis},
+                                             {"ewald", Scheme::ewald}}; // map string keyword to scheme type
 
-    testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
+    std::string name = j.at("type").get<std::string>();
+    auto it = m.find(name);
+    if (it == m.end())
+        throw std::runtime_error("unknown coulomb scheme " + name);
 
-    // Possion with D=4, C=3 should equal Fanourgakis:
-    CHECK(Poisson(cutoff, 4, 3).short_range_function(0.5) == Approx(pot.short_range_function(0.5)));
-}
-#endif
-
-/**
- * @brief Create arbitrary energy class
- * @param type Energy type to create
- * @param args Arguments passed to selected class, i.e. Plain, Ewald etc.
- * @return Shared pointer to base class of created object
- */
-template <class... Args> std::shared_ptr<SchemeBase> createScheme(Scheme type, Args &&... args) {
     std::shared_ptr<SchemeBase> scheme;
-    switch (type) {
+    switch (it->second) {
     case Scheme::plain:
-        scheme = std::make_shared<Plain>(args...);
-        break;
-    case Scheme::ewald:
-        scheme = std::make_shared<Ewald>(args...);
-        break;
-    case Scheme::poisson:
-        scheme = std::make_shared<Poisson>(args...);
-        break;
-    case Scheme::poissonsimple:
-        scheme = std::make_shared<PoissonSimple>(args...);
-        break;
-    case Scheme::qpotential:
-        scheme = std::make_shared<qPotential>(args...);
+        scheme = std::make_shared<Plain>(j);
         break;
     case Scheme::wolf:
-        scheme = std::make_shared<Wolf>(args...);
+        scheme = std::make_shared<Wolf>(j);
         break;
     case Scheme::fanourgakis:
-        scheme = std::make_shared<Fanourgakis>(args...);
+        scheme = std::make_shared<Fanourgakis>(j);
+        break;
+    case Scheme::qpotential5:
+        scheme = std::make_shared<qPotentialFixedOrder<5>>(j);
+        break;
+    case Scheme::qpotential:
+        scheme = std::make_shared<qPotential>(j);
+        break;
+    case Scheme::poissonsimple:
+        scheme = std::make_shared<PoissonSimple>(j);
+        break;
+    case Scheme::ewald:
+        scheme = std::make_shared<Ewald>(j);
+        break;
+    case Scheme::poisson:
+        scheme = std::make_shared<Poisson>(j);
         break;
     default:
         break;
     }
     return scheme;
 }
-#ifdef DOCTEST_LIBRARY_INCLUDED
-TEST_CASE("[CoulombGalore] createScheme") {
-    using doctest::Approx;
-    double cutoff = 29.0;   // cutoff distance
-    double zA = 2.0;        // charge
-    double zB = 3.0;        // charge
-    vec3 muA = {19, 7, 11}; // dipole moment
-    vec3 muB = {13, 17, 5}; // dipole moment
-    vec3 r = {23, 0, 0};    // distance vector
-    vec3 rh = {1, 0, 0};    // normalized distance vector
-    auto pot = createScheme(Scheme::plain, infinity);
+#endif
 
-    // Test potentials
-    CHECK(pot->ion_potential(zA, cutoff + 1.0) == Approx(0.06666666667));
-    CHECK(pot->ion_potential(zA, r.norm()) == Approx(0.08695652174));
-    CHECK(pot->dipole_potential(muA, (cutoff + 1.0) * rh) == Approx(0.02111111111));
-    CHECK(pot->dipole_potential(muA, r) == Approx(0.03591682420));
+// -------------- Splined ---------------
 
+/**
+ * @brief Dynamic scheme where all short ranged functions are splined
+ * @tparam spline If false, no splining if performed
+ */
+class Splined : public EnergyImplementation<Splined> {
+  private:
+    std::shared_ptr<SchemeBase> pot;
+    Tabulate::Andrea<double> splined_srf;                            // spline class
+    std::array<Tabulate::TabulatorBase<double>::data, 4> splinedata; // 0=original, 1=first derivative, ...
+
+    void generate_spline_data() {
+        assert(pot);
+        SchemeBase::operator=(*pot); // copy base data from pot -> Splined
+        splined_srf.setTolerance(1e-3, 1e-1);
+        splinedata[0] = splined_srf.generate([pot = pot](double q) { return pot->short_range_function(q); }, 0, 1);
+        splinedata[1] =
+            splined_srf.generate([pot = pot](double q) { return pot->short_range_function_derivative(q); }, 0, 1);
+        splinedata[2] = splined_srf.generate(
+            [pot = pot](double q) { return pot->short_range_function_second_derivative(q); }, 0, 1);
+        splinedata[3] =
+            splined_srf.generate([pot = pot](double q) { return pot->short_range_function_third_derivative(q); }, 0, 1);
+    }
+
+  public:
+    inline Splined() : EnergyImplementation<Splined>(Scheme::spline, infinity) {}
+
+    /**
+     * @brief Spline given potential type
+     * @tparam T Potential class
+     * @param args Passed to constructor of potential class
+     * @note This must be called before using any other functions
+     */
+    template <class T, class... Args> void spline(Args &&... args) {
+        pot = std::make_shared<T>(args...);
+        generate_spline_data();
+    }
+    inline double short_range_function(double q) const override { return splined_srf.eval(splinedata[0], q); };
+
+    inline double short_range_function_derivative(double q) const override {
+        return splined_srf.eval(splinedata[1], q);
+    }
+    inline double short_range_function_second_derivative(double q) const override {
+        return splined_srf.eval(splinedata[2], q);
+    }
+    inline double short_range_function_third_derivative(double q) const override {
+        return splined_srf.eval(splinedata[3], q);
+    }
 #ifdef NLOHMANN_JSON_HPP
-    // Test Yukawa-interaction and note that we merely re-assign `pot`
-    pot = createScheme(Scheme::poisson, nlohmann::json({{"cutoff", cutoff}, {"C", 3}, {"D", 3}, {"debyelength", 23}}));
-    CHECK(pot->ion_potential(zA, cutoff) == Approx(0.0));
-    CHECK(pot->ion_potential(zA, r.norm()) == Approx(0.003344219306));
+  public:
+    void to_json(nlohmann::json &j) const { pot->to_json(j); }
+
+  private:
+    void _to_json(nlohmann::json &) const override {}
 #endif
-}
-#endif
+};
 
 } // namespace CoulombGalore
