@@ -8,11 +8,11 @@
 
 // https://en.cppreference.com/w/User:D41D8CD98F/feature_testing_macros#C.2B.2B17
 #ifdef __cpp_lib_apply
-    #include <tuple>
-    using std::apply;
+#include <tuple>
+using std::apply;
 #elif __cpp_lib_exprimental_apply
-    #include <experimental/tuple>
-    using std::experimental::apply;
+#include <experimental/tuple>
+using std::experimental::apply;
 #else
 //#error "no std::apply support ='("
 #endif
@@ -346,7 +346,7 @@ template <typename T = double> class Andrea : public TabulatorBase<T> {
     inline T eval(const typename base::data &d, T r2) const {
         size_t pos = std::lower_bound(d.r2.begin(), d.r2.end(), r2) - d.r2.begin() - 1;
         size_t pos6 = 6 * pos;
-        assert((pos6+5)<d.c.size() && "out of bounds");
+        assert((pos6 + 5) < d.c.size() && "out of bounds");
         T dz = r2 - d.r2[pos];
         return d.c[pos6] +
                dz * (d.c[pos6 + 1] +
@@ -676,15 +676,17 @@ template <class T> class EnergyImplementation : public SchemeBase {
             double r1 = std::sqrt(r2);
             double r3 = r1 * r2;
             double q = r1 * invcutoff;
+            double q2 = q * q;
+            double kappa2 = kappa * kappa;
+            double kappa_x_r1 = kappa * r1;
             double srf = static_cast<const T *>(this)->short_range_function(q);
             double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
             double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
             vec3 fieldD = (3.0 * mu.dot(r) * r / r2 - mu) / r3;
-            fieldD *= (srf * (1.0 + kappa * r1 + kappa * kappa * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa * r1) +
-                       q * q / 3.0 * ddsrf);
-            vec3 fieldI = mu / r3;
-            fieldI *= (srf * kappa * kappa * r2 - 2.0 * kappa * r1 * q * dsrf + ddsrf * q * q) / 3.0;
-            return (fieldD + fieldI) * std::exp(-kappa * r1);
+            fieldD *= (srf * (1.0 + kappa_x_r1 + kappa2 * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa_x_r1) +
+                       q2 / 3.0 * ddsrf);
+            vec3 fieldI = mu / r3 * (srf * kappa2 * r2 - 2.0 * kappa_x_r1 * q * dsrf + ddsrf * q2) / 3.0;
+            return (fieldD + fieldI) * std::exp(-kappa_x_r1);
         } else {
             return {0, 0, 0};
         }
@@ -911,7 +913,7 @@ class Ewald : public EnergyImplementation<Ewald> {
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
      */
-    inline Ewald(double cutoff, double alpha, double eps_sur=infinity, double debye_length = infinity)
+    inline Ewald(double cutoff, double alpha, double eps_sur = infinity, double debye_length = infinity)
         : EnergyImplementation(Scheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur) {
         name = "Ewald real-space";
         alphaRed = alpha * cutoff;
@@ -1337,7 +1339,7 @@ class Fanourgakis : public EnergyImplementation<Fanourgakis> {
 };
 
 #ifdef NLOHMANN_JSON_HPP
-std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
+inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
     const std::map<std::string, Scheme> m = {{"plain", Scheme::plain},
                                              {"qpotential", Scheme::qpotential},
                                              {"wolf", Scheme::wolf},
