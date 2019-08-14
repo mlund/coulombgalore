@@ -72,7 +72,7 @@ constexpr unsigned int binomial(unsigned int n, unsigned int k) {
  *
  * More information here: http://mathworld.wolfram.com/q-PochhammerSymbol.html
  */
-inline constexpr double qPochhammerSymbol(double q, int l = 0, int P = 300) {
+inline double qPochhammerSymbol(double q, int l = 0, int P = 300) {
     double Ct = 1.0; // evaluates to \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
     for (int n = 1; n < P + 1; n++) {
         double val = 0.0;
@@ -87,7 +87,7 @@ inline constexpr double qPochhammerSymbol(double q, int l = 0, int P = 300) {
 /**
  * @brief Gives the derivative of the q-Pochhammer Symbol
  */
-inline constexpr double qPochhammerSymbolDerivative(double q, int l = 0, int P = 300) {
+inline double qPochhammerSymbolDerivative(double q, int l = 0, int P = 300) {
     double Ct = 1.0; // evaluates to \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
     for (int n = 1; n < P + 1; n++) {
         double val = 0.0;
@@ -116,7 +116,7 @@ inline constexpr double qPochhammerSymbolDerivative(double q, int l = 0, int P =
 /**
  * @brief Gives the second derivative of the q-Pochhammer Symbol
  */
-inline constexpr double qPochhammerSymbolSecondDerivative(double q, int l = 0, int P = 300) {
+inline double qPochhammerSymbolSecondDerivative(double q, int l = 0, int P = 300) {
     double Ct = 1.0; // evaluates to \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
     double DS = 0.0;
     double dDS = 0.0;
@@ -155,7 +155,7 @@ inline constexpr double qPochhammerSymbolSecondDerivative(double q, int l = 0, i
 /**
  * @brief Gives the third derivative of the q-Pochhammer Symbol
  */
-inline constexpr double qPochhammerSymbolThirdDerivative(double q, int l = 0, int P = 300) {
+inline double qPochhammerSymbolThirdDerivative(double q, int l = 0, int P = 300) {
     double Ct = 1.0; // evaluates to \prod_{n=1}^P\sum_{k=0}^{n+l}q^k
     double DS = 0.0;
     double dDS = 0.0;
@@ -577,7 +577,7 @@ class SchemeBase {
  *
  * Derived function need only implement short range functions and derivatives thereof.
  */
-template <class T> class EnergyImplementation : public SchemeBase {
+template <class T, bool debyehuckel=true> class EnergyImplementation : public SchemeBase {
   public:
     EnergyImplementation(Scheme type, double cutoff, double debyelength = infinity)
         : SchemeBase(type, cutoff, debyelength) {
@@ -600,7 +600,10 @@ template <class T> class EnergyImplementation : public SchemeBase {
     inline double ion_potential(double z, double r) const override {
         if (r < cutoff) {
             double q = r * invcutoff;
-            return z / r * static_cast<const T *>(this)->short_range_function(q) * std::exp(-kappa * r);
+            if (debyehuckel) // determined at compile time
+                return z / r * static_cast<const T *>(this)->short_range_function(q) * std::exp(-kappa * r);
+            else 
+                return z / r * static_cast<const T *>(this)->short_range_function(q);
         } else {
             return 0.0;
         }
@@ -1031,6 +1034,7 @@ template <int order> class qPotentialFixedOrder : public EnergyImplementation<qP
      */
     inline qPotentialFixedOrder(double cutoff) : base(Scheme::qpotential, cutoff) {
         name = "qpotential";
+        this->doi = "10/c5fr";
         self_energy_prefactor = {-1.0, -1.0};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
@@ -1070,6 +1074,7 @@ class qPotential : public EnergyImplementation<qPotential> {
      */
     inline qPotential(double cutoff, int order) : EnergyImplementation(Scheme::qpotential, cutoff), order(order) {
         name = "qpotential";
+        doi = "10/c5fr";
         self_energy_prefactor = {-1.0, -1.0};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }

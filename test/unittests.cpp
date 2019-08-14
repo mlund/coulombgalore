@@ -467,7 +467,7 @@ TEST_CASE("[CoulombGalore] createScheme") {
     double cutoff = 29.0;   // cutoff distance
     double zA = 2.0;        // charge
     vec3 muA = {19, 7, 11}; // dipole moment
-    vec3 muB = {13, 17, 5}; // dipole moment
+    //vec3 muB = {13, 17, 5}; // dipole moment
     vec3 r = {23, 0, 0};    // distance vector
     vec3 rh = {1, 0, 0};    // normalized distance vector
 
@@ -514,7 +514,7 @@ TEST_CASE("[CoulombGalore] Splined") {
         int D = 3;              // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
         double zA = 2.0;        // charge
         vec3 muA = {19, 7, 11}; // dipole moment
-        vec3 muB = {13, 17, 5}; // dipole moment
+        //vec3 muB = {13, 17, 5}; // dipole moment
         vec3 r = {cutoff, 0, 0}; // distance vector
         vec3 rh = {1, 0, 0};            // normalized distance vector
 
