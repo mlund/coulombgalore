@@ -984,7 +984,9 @@ struct Ewald : public EnergyImplementation<Ewald> {
      */
     inline double reciprocal_energy(std::vector<vec3> positions, std::vector<double> charges, std::vector<vec3> dipoles, vec3 L, int nmax) const {
         double volume = L[0]*L[1]*L[2];
-        if( std::abs( positions.size() - charges.size() ) > 0 || std::abs( positions.size() - dipoles.size() ) > 0 || std::abs( charges.size() - dipoles.size() ) > 0 )
+        if( std::abs( int(positions.size()) - int(charges.size()) ) > 0 ||
+                std::abs( int(positions.size()) - int(dipoles.size()) ) > 0 ||
+                std::abs( int(charges.size()) - int(dipoles.size()) ) > 0 )
             throw std::runtime_error("Vectors must have same size!");
 
         std::vector<vec3> kvec;
@@ -1029,7 +1031,9 @@ struct Ewald : public EnergyImplementation<Ewald> {
      * @param L Dimensions of unit-cell
      */
     inline double surface_energy(std::vector<vec3> positions, std::vector<double> charges, std::vector<vec3> dipoles, vec3 L) const {
-        if( std::abs( positions.size() - charges.size() ) > 0 || std::abs( positions.size() - dipoles.size() ) > 0 || std::abs( charges.size() - dipoles.size() ) > 0 )
+        if( std::abs( int(positions.size()) - int(charges.size()) ) > 0 ||
+                std::abs( int(positions.size()) - int(dipoles.size()) ) > 0 ||
+                std::abs( int(charges.size()) - int(dipoles.size()) ) > 0 )
             throw std::runtime_error("Vectors must have same size!");
 
         double volume = L[0]*L[1]*L[2];
@@ -1044,7 +1048,9 @@ struct Ewald : public EnergyImplementation<Ewald> {
     }
 
     inline vec3 surface_force(std::vector<vec3> positions, std::vector<double> charges, std::vector<vec3> dipoles, int I, vec3 L) const {
-        if( std::abs( positions.size() - charges.size() ) > 0 || std::abs( positions.size() - dipoles.size() ) > 0 || std::abs( charges.size() - dipoles.size() ) > 0 )
+        if( std::abs( int(positions.size()) - int(charges.size()) ) > 0 ||
+                std::abs( int(positions.size()) - int(dipoles.size()) ) > 0 ||
+                std::abs( int(charges.size()) - int(dipoles.size()) ) > 0 )
             throw std::runtime_error("Vectors must have same size!");
 
         double volume = L[0]*L[1]*L[2];
