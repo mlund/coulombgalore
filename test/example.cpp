@@ -28,7 +28,7 @@ int main() {
 
     // this is just the plain old Coulomb potential
     double debye_length = 23.01e-10;
-    PairPotential<Plain> pot_plainY(debye_length);
+    Plain pot_plainY(debye_length);
     u12 = pot_plainY.ion_ion_energy(z1, z2, r.norm());
     std::cout << "plain ion-ion energy:      " << bjerrum_length * u12 << " kT" << std::endl;
 
