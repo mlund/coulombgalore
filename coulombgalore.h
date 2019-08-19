@@ -505,6 +505,18 @@ class SchemeBase {
 
     virtual ~SchemeBase() = default;
 
+    virtual double reciprocal_energy(std::vector<Point>, std::vector<double>, std::vector<Point>, Point, int) const { return 0.0; }
+
+    virtual double surface_energy(std::vector<Point>, std::vector<double>, std::vector<Point>, Point) const { return 0.0; }
+
+    virtual double charge_compensation_energy(std::vector<double>, Point) const {return 0.0; }
+
+    virtual Point reciprocal_force(std::vector<Point>, std::vector<double>, std::vector<Point>, int, Point, int) const { return {0.0,0.0,0.0}; }
+
+    virtual Point surface_force(std::vector<Point>, std::vector<double>, std::vector<Point>, int, Point) const { return {0.0,0.0,0.0}; }
+
+    virtual Point charge_compensation_force(std::vector<double>, Point) const {return {0.0,0.0,0.0}; }
+
     /**
      * @brief Calculate dielectric constant
      * @param M2V see details
@@ -902,14 +914,15 @@ class Plain : public EnergyImplementation<Plain> {
 /**
  * @brief Ewald real-space scheme
  */
-class Ewald : public EnergyImplementation<Ewald> {
-  private:
-    double alpha;                                           //!< Damping-parameter
-    double alphaRed, alphaRed2, alphaRed3;                  //!< Reduced damping-parameter, and squared
-    double eps_sur;                                         //!< Dielectric constant of the surrounding medium
-    double kappa;                                           //!< Inverse Debye-length
-    double beta, beta2, beta3;                              //!< Inverse ( twice Debye-length times damping-parameter )
-    const double sqrt_pi = 2.0 * std::sqrt(std::atan(1.0)); //!< √π
+struct Ewald : public EnergyImplementation<Ewald> {
+    double alpha, alpha2;                  //!< Damping-parameter
+    double alphaRed, alphaRed2, alphaRed3; //!< Reduced damping-parameter, and squared
+    double eps_sur;                        //!< Dielectric constant of the surrounding medium
+    double debye_length;                   //!< Debye-length
+    double kappa, kappa2;                  //!< Inverse Debye-length
+    double beta, beta2, beta3;             //!< Inverse ( twice Debye-length times damping-parameter )
+    const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
+    const double pi = std::pow(2.0 * std::sqrt(std::atan(1.0)),2.0);
 
   public:
     /**
@@ -919,6 +932,7 @@ class Ewald : public EnergyImplementation<Ewald> {
     inline Ewald(double cutoff, double alpha, double eps_sur = infinity, double debye_length = infinity)
         : EnergyImplementation(Scheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur) {
         name = "Ewald real-space";
+        alpha2 = alpha * alpha;
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
         alphaRed3 = alphaRed2 * alphaRed;
@@ -926,6 +940,7 @@ class Ewald : public EnergyImplementation<Ewald> {
             eps_sur = infinity;
         T0 = (std::isinf(eps_sur)) ? 1.0 : 2.0 * (eps_sur - 1.0) / (2.0 * eps_sur + 1.0);
         kappa = 1.0 / debye_length;
+        kappa2 = kappa * kappa;
         beta = kappa / (2.0 * alpha);
         beta2 = beta * beta;
         beta3 = beta2 * beta;
@@ -956,6 +971,105 @@ class Ewald : public EnergyImplementation<Ewald> {
         return (4.0 * alphaRed3 / sqrt_pi *
                     (1.0 - 2.0 * (alphaRed * q - 2.0 * beta) * (alphaRed * q - beta) - 4.0 * beta2) * expC +
                 32.0 * alphaRed3 * beta3 * erfcC * std::exp(4.0 * alphaRed * beta * q));
+    }
+
+    /**
+     * @brief Reciprocal-space energy
+     * @param positions Positions of particles
+     * @param charges Charges of particles
+     * @param dipoles Dipole moments of particles
+     * @param L Dimensions of unit-cell
+     * @param nmax Cut-off in reciprocal-space
+     * @note Uses spherical cut-off in summation
+     */
+    inline double reciprocal_energy(std::vector<Point> positions, std::vector<double> charges, std::vector<Point> dipoles, Point L, int nmax) const {
+        double volume = L[0]*L[1]*L[2];
+        if( std::abs( positions.size() - charges.size() ) > 0 || std::abs( positions.size() - dipoles.size() ) > 0 || std::abs( charges.size() - dipoles.size() ) > 0 )
+            throw std::runtime_error("Vectors must have same size!");
+
+        std::vector<Point> kvec;
+        std::vector<double> Ak;
+        int kvec_size = 0;
+        for(int nx = -nmax; nx < nmax+1; nx++) {
+            for(int ny = -nmax; ny < nmax+1; ny++) {
+                for(int nz = -nmax; nz < nmax+1; nz++) {
+                    Point kv = { 2.0 * pi * nx / L[0] , 2.0 * pi * ny / L[1] , 2.0 * pi * nz / L[2] };
+                    double k2 = double( kv.squaredNorm() ) + kappa2;
+                    Point nv = { nx , ny , nz };
+		    double nv1 = double( nv.norm() );
+                    if( nv1 > 0 && nv1 <= nmax) {
+                        kvec.push_back(kv);
+                        Ak.push_back( std::exp( -k2 / 4.0 / alpha2 ) / k2 );
+                        kvec_size++;
+                    }
+                }
+            }
+        }
+
+        double E = 0.0;
+        for(int k = 0; k < kvec_size; k++) {
+            std::complex<double> Qq(0.0,0.0);
+            std::complex<double> Qmu(0.0,0.0);
+            for(int i = 0; i < positions.size(); i++) {
+                double kDotR = kvec.at(k).dot( positions.at(i) );
+                Qq += charges.at(i) * std::complex<double>( cos(kDotR) , sin(kDotR) );
+                Qmu += dipoles.at(i).dot(kvec.at(k)) * std::complex<double>( -sin(kDotR) , cos(kDotR) );
+            }
+            std::complex<double> Q = Qq + Qmu;
+            E += ( pow( std::abs( Q ), 2.0 ) * Ak.at(k) );
+        }
+        return ( E * 2.0 * pi / volume );
+    }
+
+    /**
+     * @brief Surface-term
+     * @param positions Positions of particles
+     * @param charges Charges of particles
+     * @param dipoles Dipole moments of particles
+     * @param L Dimensions of unit-cell
+     */
+    inline double surface_energy(std::vector<Point> positions, std::vector<double> charges, std::vector<Point> dipoles, Point L) const {
+        if( std::abs( positions.size() - charges.size() ) > 0 || std::abs( positions.size() - dipoles.size() ) > 0 || std::abs( charges.size() - dipoles.size() ) > 0 )
+            throw std::runtime_error("Vectors must have same size!");
+
+        double volume = L[0]*L[1]*L[2];
+        Point sum_r_charges = {0.0,0.0,0.0};
+        Point sum_dipoles = {0.0,0.0,0.0};
+        for(int i = 0; i < positions.size(); i++) {
+            sum_r_charges += positions.at(i) * charges.at(i);
+            sum_dipoles += dipoles.at(i);
+        }
+        double sqDipoles = sum_r_charges.dot(sum_r_charges) + 2.0 * sum_r_charges.dot(sum_dipoles) + sum_dipoles.dot(sum_dipoles);
+        return ( 2.0 * pi / ( 2.0 * eps_sur + 1.0 ) / volume * sqDipoles );
+    }
+
+    inline Point surface_force(std::vector<Point> positions, std::vector<double> charges, std::vector<Point> dipoles, int I, Point L) const {
+        if( std::abs( positions.size() - charges.size() ) > 0 || std::abs( positions.size() - dipoles.size() ) > 0 || std::abs( charges.size() - dipoles.size() ) > 0 )
+            throw std::runtime_error("Vectors must have same size!");
+
+        double volume = L[0]*L[1]*L[2];
+        Point sum_r_charges = {0.0,0.0,0.0};
+        Point sum_dipoles = {0.0,0.0,0.0};
+        for(int i = 0; i < positions.size(); i++) {
+            sum_r_charges += positions.at(i) * charges.at(i);
+            sum_dipoles += dipoles.at(i);
+        }
+        double sqDipoles = 0.0;
+        return ( -4.0*pi/(2.0*eps_sur + 1.0)/volume * charges.at(I) *(sum_r_charges + sum_dipoles) );
+    }
+
+    /**
+     * @brief Compensating term for non-neutral systems
+     * @param charges Charges of particles
+     * @param L Dimensions of unit-cell
+     * @note DOI:10.1021/ct400626b
+     */
+    inline double charge_compensation_energy(std::vector<double> charges, Point L) const {
+        double volume = L[0]*L[1]*L[2];
+        double squaredSumQ = 0.0;
+        for(int i = 0; i < charges.size(); i++)
+            squaredSumQ += charges.at(i);
+        return ( -pi / 2.0 / alpha2 / volume * squaredSumQ );
     }
 
 #ifdef NLOHMANN_JSON_HPP
