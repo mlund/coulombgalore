@@ -11,12 +11,10 @@ include(FetchContent)
 
 ## GCC
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    add_compile_options(-Wall -Wextra -Wpedantic -Wunreachable-code -Wstrict-aliasing
-        -Wno-sign-compare -Wno-unused-local-typedefs -Wno-unknown-pragmas)
+    add_compile_options(-Wall -Wextra -Wpedantic -Wunreachable-code -Wstrict-aliasing)
 ## Clang
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    add_compile_options(-Wall -Wextra -Wpedantic -Wunreachable-code
-        -Wstrict-aliasing -Wno-sign-compare -Wno-unused-local-typedef -Wno-unknown-pragmas)
+    add_compile_options(-Wall -Wextra -Wpedantic -Wunreachable-code -Wstrict-aliasing)
 endif()
 
 # download modern json
@@ -50,7 +48,8 @@ if(NOT doctest_POPULATED)
     add_definitions(-DDOCTEST_CONFIG_DISABLE)
 endif()
 
-include_directories(SYSTEM ${eigen_SOURCE_DIR} ${doctest_SOURCE_DIR} ${modernjson_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
+include_directories(SYSTEM ${eigen_SOURCE_DIR} ${doctest_SOURCE_DIR} ${modernjson_SOURCE_DIR})
+include_directories(${CMAKE_SOURCE_DIR})
 
 add_executable(example test/example.cpp)
 add_executable(unittests test/unittests.cpp)
