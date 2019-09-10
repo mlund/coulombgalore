@@ -509,7 +509,7 @@ class SchemeBase {
 
     virtual double surface_energy(std::vector<vec3>, std::vector<double>, std::vector<vec3>, vec3) const { return 0.0; }
 
-    virtual double charge_compensation_energy(std::vector<double>, vec3) const {return 0.0; }
+    virtual double charge_compensation_energy(std::vector<double>, double) const {return 0.0; }
 
     virtual vec3 reciprocal_force(std::vector<vec3>, std::vector<double>, std::vector<vec3>, int, vec3, int) const { return {0.0,0.0,0.0}; }
 
@@ -922,7 +922,7 @@ struct Ewald : public EnergyImplementation<Ewald> {
     double kappa, kappa2;                  //!< Inverse Debye-length
     double beta, beta2, beta3;             //!< Inverse ( twice Debye-length times damping-parameter )
     const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
-    const double pi = std::pow(2.0 * std::sqrt(std::atan(1.0)),2.0);
+    const double pi = 4.0 * std::atan(1.0);
 
   public:
     /**
@@ -1061,11 +1061,10 @@ struct Ewald : public EnergyImplementation<Ewald> {
     /**
      * @brief Compensating term for non-neutral systems
      * @param charges Charges of particles
-     * @param L Dimensions of unit-cell
+     * @param volume Volume of unit-cell
      * @note DOI:10.1021/ct400626b
      */
-    inline double charge_compensation_energy(std::vector<double> charges, vec3 L) const {
-        double volume = L[0]*L[1]*L[2];
+    inline double charge_compensation_energy(std::vector<double> charges, double volume) const {
         double squaredSumQ = 0.0;
         for(int i = 0; i < charges.size(); i++)
             squaredSumQ += charges.at(i);
