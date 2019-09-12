@@ -507,13 +507,13 @@ class SchemeBase {
 
     virtual double reciprocal_energy(std::vector<vec3>, std::vector<double>, std::vector<vec3>, vec3, int) const { return 0.0; }
 
-    virtual double surface_energy(std::vector<vec3>, std::vector<double>, std::vector<vec3>, vec3) const { return 0.0; }
+    virtual double surface_energy(std::vector<vec3>, std::vector<double>, std::vector<vec3>, double) const { return 0.0; }
 
     virtual double charge_compensation_energy(std::vector<double>, double) const {return 0.0; }
 
     virtual vec3 reciprocal_force(std::vector<vec3>, std::vector<double>, std::vector<vec3>, int, vec3, int) const { return {0.0,0.0,0.0}; }
 
-    virtual vec3 surface_force(std::vector<vec3>, std::vector<double>, std::vector<vec3>, int, vec3) const { return {0.0,0.0,0.0}; }
+    virtual vec3 surface_force(std::vector<vec3>, std::vector<double>, std::vector<vec3>, int, double) const { return {0.0,0.0,0.0}; }
 
     virtual vec3 charge_compensation_force(std::vector<double>, vec3) const {return {0.0,0.0,0.0}; }
 
@@ -997,7 +997,7 @@ struct Ewald : public EnergyImplementation<Ewald> {
                 for(int nz = -nmax; nz < nmax+1; nz++) {
                     vec3 kv = { 2.0 * pi * nx / L[0] , 2.0 * pi * ny / L[1] , 2.0 * pi * nz / L[2] };
                     double k2 = double( kv.squaredNorm() ) + kappa2;
-                    vec3 nv = { nx , ny , nz };
+                    vec3 nv = { double(nx) , double(ny) , double(nz) };
 		    double nv1 = double( nv.norm() );
                     if( nv1 > 0 && nv1 <= nmax) {
                         kvec.push_back(kv);
@@ -1012,7 +1012,7 @@ struct Ewald : public EnergyImplementation<Ewald> {
         for(int k = 0; k < kvec_size; k++) {
             std::complex<double> Qq(0.0,0.0);
             std::complex<double> Qmu(0.0,0.0);
-            for(int i = 0; i < positions.size(); i++) {
+            for(unsigned int i = 0; i < positions.size(); i++) {
                 double kDotR = kvec.at(k).dot( positions.at(i) );
                 Qq += charges.at(i) * std::complex<double>( cos(kDotR) , sin(kDotR) );
                 Qmu += dipoles.at(i).dot(kvec.at(k)) * std::complex<double>( -sin(kDotR) , cos(kDotR) );
@@ -1028,18 +1028,17 @@ struct Ewald : public EnergyImplementation<Ewald> {
      * @param positions Positions of particles
      * @param charges Charges of particles
      * @param dipoles Dipole moments of particles
-     * @param L Dimensions of unit-cell
+     * @param volume Volume of unit-cell
      */
-    inline double surface_energy(std::vector<vec3> positions, std::vector<double> charges, std::vector<vec3> dipoles, vec3 L) const {
+    inline double surface_energy(std::vector<vec3> positions, std::vector<double> charges, std::vector<vec3> dipoles, double volume) const {
         if( std::abs( int(positions.size()) - int(charges.size()) ) > 0 ||
                 std::abs( int(positions.size()) - int(dipoles.size()) ) > 0 ||
                 std::abs( int(charges.size()) - int(dipoles.size()) ) > 0 )
             throw std::runtime_error("Vectors must have same size!");
 
-        double volume = L[0]*L[1]*L[2];
         vec3 sum_r_charges = {0.0,0.0,0.0};
         vec3 sum_dipoles = {0.0,0.0,0.0};
-        for(int i = 0; i < positions.size(); i++) {
+        for(unsigned int i = 0; i < positions.size(); i++) {
             sum_r_charges += positions.at(i) * charges.at(i);
             sum_dipoles += dipoles.at(i);
         }
@@ -1047,16 +1046,15 @@ struct Ewald : public EnergyImplementation<Ewald> {
         return ( 2.0 * pi / ( 2.0 * eps_sur + 1.0 ) / volume * sqDipoles );
     }
 
-    inline vec3 surface_force(std::vector<vec3> positions, std::vector<double> charges, std::vector<vec3> dipoles, int I, vec3 L) const {
+    inline vec3 surface_force(std::vector<vec3> positions, std::vector<double> charges, std::vector<vec3> dipoles, int I, double volume) const {
         if( std::abs( int(positions.size()) - int(charges.size()) ) > 0 ||
                 std::abs( int(positions.size()) - int(dipoles.size()) ) > 0 ||
                 std::abs( int(charges.size()) - int(dipoles.size()) ) > 0 )
             throw std::runtime_error("Vectors must have same size!");
 
-        double volume = L[0]*L[1]*L[2];
         vec3 sum_r_charges = {0.0,0.0,0.0};
         vec3 sum_dipoles = {0.0,0.0,0.0};
-        for(int i = 0; i < positions.size(); i++) {
+        for(unsigned int i = 0; i < positions.size(); i++) {
             sum_r_charges += positions.at(i) * charges.at(i);
             sum_dipoles += dipoles.at(i);
         }
@@ -1072,7 +1070,7 @@ struct Ewald : public EnergyImplementation<Ewald> {
      */
     inline double charge_compensation_energy(std::vector<double> charges, double volume) const {
         double squaredSumQ = 0.0;
-        for(int i = 0; i < charges.size(); i++)
+        for(unsigned int i = 0; i < charges.size(); i++)
             squaredSumQ += charges.at(i);
         return ( -pi / 2.0 / alpha2 / volume * squaredSumQ );
     }
@@ -1285,8 +1283,8 @@ class PoissonSimple : public EnergyImplementation<PoissonSimple> {
  * ------------ | --- | --- | ----------------------
  * `plain`      |  1  | -1  | Plain Coulomb
  * `wolf`       |  1  |  0  | Undamped Wolf, doi:10.1063/1.478738
- * `fennel`     |  1  |  1  | Levitt/undamped Fennell, doi:10/fp959p or 10/bqgmv2
- * `zkale`      |  1  |  2  | Kale, doi:10/csh8bg
+ * `fennell`    |  1  |  1  | Levitt/undamped Fennell, doi:10/fp959p or 10/bqgmv2
+ * `kale`       |  1  |  2  | Kale, doi:10/csh8bg
  * `mccann`     |  1  |  3  | McCann, doi:10.1021/ct300961
  * `fukuda`     |  2  |  1  | Undamped Fukuda, doi:10.1063/1.3582791
  * `markland`   |  2  |  2  | Markland, doi:10.1016/j.cplett.2008.09.019
