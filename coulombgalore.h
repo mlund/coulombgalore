@@ -891,7 +891,7 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
  */
 class Plain : public EnergyImplementation<Plain> {
   public:
-    inline Plain(double debye_length = infinity) : EnergyImplementation(Scheme::plain, infinity, debye_length) {
+    inline Plain(double debye_length = infinity) : EnergyImplementation(Scheme::plain, std::numeric_limits<double>::max(), debye_length) {
         name = "plain";
         doi = "Premier mémoire sur l’électricité et le magnétisme by Charles-Augustin de Coulomb"; // :P
         self_energy_prefactor = {0.0, 0.0};
