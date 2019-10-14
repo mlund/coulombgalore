@@ -538,27 +538,15 @@ class SchemeBase {
     virtual double short_range_function_second_derivative(double q) const = 0;
     virtual double short_range_function_third_derivative(double q) const = 0;
 
-    /**
-     * @brief interaction energy between two ions
-     * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
-     * @param zA charge
-     * @param zB charge
-     * @param r charge separation
-     *
-     * @details The interaction energy between two charges is decribed by
-     * @f[
-     *     u(z_A, z_B, r) = z_B \Phi(z_A,r)
-     * @f]
-     * where @f[ \Phi(z_A,r) @f] is the potential from ion A.
-     * @note Calling from base class may be slow as it's virtual; call from derived class for better performance.
-     */
     virtual double ion_ion_energy(double, double, double) const = 0;
     virtual double ion_dipole_energy(double, const vec3 &, const vec3 &) const = 0;
     virtual double dipole_dipole_energy(const vec3 &, const vec3 &, const vec3 &) const = 0;
+    virtual double multipole_multipole_energy(double, double, const vec3 &, const vec3 &, const vec3 &) const = 0;
 
     virtual vec3 ion_ion_force(double, double, const vec3 &) const = 0;
     virtual vec3 ion_dipole_force(double, const vec3 &, const vec3 &) const = 0;
     virtual vec3 dipole_dipole_force(const vec3 &, const vec3 &, const vec3 &) const = 0;
+    virtual vec3 multipole_multipole_force(double, double, const vec3 &, const vec3 &, const vec3 &) const = 0;
 
     virtual double ion_potential(double, double) const = 0;
     virtual double dipole_potential(const vec3 &, const vec3 &) const = 0;
@@ -765,6 +753,43 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
     }
 
     /**
+     * @brief interaction energy between two multipoles with charges and dipole moments
+     * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
+     * @param zA charge of particle A
+     * @param zB charge of particle B
+     * @param muA dipole moment of particle A
+     * @param muB dipole moment of particle B
+     * @param r distance-vector between dipoles, @f[ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f]
+     *
+     * @details A combination of the functions 'ion_ion_energy', 'ion_dipole_energy' and 'dipole_dipole_energy'.
+     */
+    inline double multipole_multipole_energy(double zA, double zB, const vec3 &muA, const vec3 &muB, const vec3 &r) const override {
+        double r2 = r.squaredNorm();
+        if (r2 < cutoff2) {
+            double r1 = std::sqrt( r2 );
+            double r3 = r1 * r2;
+            double q = r1 / cutoff;
+            double kappa_r1 = kappa * r1;
+
+            double srf = static_cast<const T *>(this)->short_range_function(q);
+            double dsrfq = static_cast<const T *>(this)->short_range_function_derivative(q) * q;
+            double ddsrfq2 = static_cast<const T *>(this)->short_range_function_second_derivative(q) * q * q / 3.0;
+
+            double tmp1 = (srf * (1.0 + kappa_r1) - dsrfq) / r3;
+            double tmp2 = ( srf * kappa_r1 * kappa_r1 / 3.0 - dsrfq * (2.0 / 3.0 * kappa_r1) + ddsrfq2 ) / r3;
+
+            vec3 field_dipoleB = (3.0 * muB.dot(r) * r / r2 - muB) * ( tmp1 + tmp2 ) + muB * tmp2;
+
+            double ion_ion = zA * zB / r1 * srf;
+            double ion_dipole = ( zB * muA.dot(r) + zA * muB.dot(-r) ) * tmp1;
+            double dipole_dipole = -muA.dot(field_dipoleB);
+            return ( ion_ion + ion_dipole + dipole_dipole ) * std::exp(-kappa_r1);
+        } else {
+            return 0.0;
+        }
+    }
+
+    /**
      * @brief ion-ion interaction force
      * @returns interaction force in electrostatic units ( why not Hartree atomic units? )
      * @param zA charge
@@ -797,8 +822,8 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
     }
 
     /**
-     * @brief dipole-dipole interaction energy
-     * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
+     * @brief dipole-dipole interaction force
+     * @returns interaction force in electrostatic units ( why not Hartree atomic units? )
      * @param muA dipole moment of particle A
      * @param muB dipole moment of particle B
      * @param r distance-vector between dipoles, @f[ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f]
@@ -845,6 +870,54 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
                 (srf * (1.0 + kappa * r1) * kappa * kappa * r2 - q * dsrf * (3.0 * kappa * r1 + 2.0) * kappa * r1 +
                  ddsrf * (1.0 + 3.0 * kappa * r1) * q2 - q2 * q * dddsrf);
             return (forceD + forceI) * std::exp(-kappa * r1);
+        } else {
+            return {0, 0, 0};
+        }
+    }
+
+    /**
+     * @brief interaction force between two multipoles with charges and dipole moments
+     * @returns interaction force in electrostatic units ( why not Hartree atomic units? )
+     * @param zA charge of particle A
+     * @param zB charge of particle B
+     * @param muA dipole moment of particle A
+     * @param muB dipole moment of particle B
+     * @param r distance-vector between dipoles, @f[ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f]
+     *
+     * @details A combination of the functions 'ion_ion_force', 'ion_dipole_force' and 'dipole_dipole_force'.
+     * @warning Not working!
+     */
+    inline vec3 multipole_multipole_force(double zA, double zB, const vec3 &muA, const vec3 &muB, const vec3 &r) const override {
+        double r2 = r.squaredNorm();
+        if (r2 < cutoff2) {
+            double r1 = std::sqrt(r2);
+            double q = r1 * invcutoff;
+            double q2 = q * q;
+            double kr = kappa * r1;
+            vec3 rh = r / r1;
+            double muAdotRh = muA.dot(rh);
+            double muBdotRh = muB.dot(rh);
+
+            double srf = static_cast<const T *>(this)->short_range_function(q);
+            double dsrfq = static_cast<const T *>(this)->short_range_function_derivative(q) * q;
+            double ddsrfq2 = static_cast<const T *>(this)->short_range_function_second_derivative(q) * q2;
+            double dddsrfq3 = static_cast<const T *>(this)->short_range_function_third_derivative(q) * q2 * q;
+
+	    double tmp0 = (srf * (1.0 + kr) - dsrfq);
+	    double tmp1 = ( srf * kr * kr - 2.0 * kr * dsrfq + ddsrfq2 ) / 3.0;
+	    double tmp2 = tmp1 + tmp0;
+	    double tmp3 = (srf * (1.0 + kr) * kr * kr - dsrfq * (2.0 * ( 1.0 + kr) + kr) * kr + ddsrfq2 * (1.0 + 3.0 * kr) - dddsrfq3) / r1;
+            
+	    
+            vec3 ion_ion = zB * zA * r * (srf * (1.0 + kr) - dsrfq);
+	    //vec3 ion_ion = zB * zA * r * tmp0;
+	    
+            vec3 ion_dipoleA = zA * ( (3.0 * muBdotRh * rh - muB) * tmp2 + muB * tmp1)*0.0;
+            vec3 ion_dipoleB = zB * ( (3.0 * muAdotRh * rh - muA) * tmp2 + muA * tmp1)*0.0;
+
+            vec3 forceD = 3.0 * ((5.0 * muAdotRh * muBdotRh - muA.dot(muB)) * rh - muBdotRh * muA - muAdotRh * muB) * tmp2 / r1;
+            vec3 dipole_dipole = ( forceD +  muAdotRh * muBdotRh * rh * tmp3 );
+	    return ( ion_ion + ion_dipoleA + ion_dipoleB + dipole_dipole ) * std::exp(-kr) / r2 / r1;
         } else {
             return {0, 0, 0};
         }

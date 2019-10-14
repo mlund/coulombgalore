@@ -404,8 +404,10 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(pot43.ion_ion_energy(zA, zB, r.norm()) == Approx(0.002829195636));
     CHECK(pot43.ion_dipole_energy(zA, muB, cutoff * rh) == Approx(0.0));
     CHECK(pot43.ion_dipole_energy(zA, muB, r) == Approx(-0.007868703705));
+    CHECK(pot43.ion_dipole_energy(zB, muA, -r) == Approx(0.01725061966));
     CHECK(pot43.dipole_dipole_energy(muA, muB, cutoff * rh) == Approx(0.0));
     CHECK(pot43.dipole_dipole_energy(muA, muB, r) == Approx(-0.03284312288));
+    CHECK(pot43.multipole_multipole_energy(zA, zB, muA, muB, r) == Approx(-0.020632011289000));
 
     // Test forces
     CHECK(pot43.ion_ion_force(zA, zB, cutoff * rh).norm() == Approx(0.0));
@@ -413,15 +415,26 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(F_ionion[0] == Approx(0.001815854701));
     CHECK(F_ionion.norm() == Approx(0.001815854701));
     CHECK(pot43.ion_dipole_force(zB, muA, cutoff * rh).norm() == Approx(0.0));
-    vec3 F_iondipole = pot43.ion_dipole_force(zB, muA, r);
-    CHECK(F_iondipole[0] == Approx(0.008107541263));
-    CHECK(F_iondipole[1] == Approx(-0.0002763257154));
-    CHECK(F_iondipole[2] == Approx(-0.0004342261242));
+    vec3 F_iondipoleBA = pot43.ion_dipole_force(zB, muA, r);
+    CHECK(F_iondipoleBA[0] == Approx(0.008107541263));
+    CHECK(F_iondipoleBA[1] == Approx(-0.0002763257154));
+    CHECK(F_iondipoleBA[2] == Approx(-0.0004342261242));
+
+    vec3 F_iondipoleAB = pot43.ion_dipole_force(zA, muB, -r);
+    CHECK(F_iondipoleAB[0] == Approx(0.003698176716));
+    CHECK(F_iondipoleAB[1] == Approx(-0.0004473844916));
+    CHECK(F_iondipoleAB[2] == Approx(-0.0001315836740));
+
     CHECK(pot43.dipole_dipole_force(muA, muB, cutoff * rh).norm() == Approx(0.0));
     vec3 F_dipoledipole = pot43.dipole_dipole_force(muA, muB, r);
     CHECK(F_dipoledipole[0] == Approx(0.009216400961));
     CHECK(F_dipoledipole[1] == Approx(-0.002797126801));
     CHECK(F_dipoledipole[2] == Approx(-0.001608010094));
+
+    vec3 F_multipolemultipole = pot43.multipole_multipole_force(zA, zB, muA, muB, r);
+    //CHECK(F_multipolemultipole[0] == Approx(0.022837973641));
+    //CHECK(F_multipolemultipole[1] == Approx(-0.003520837008));
+    //CHECK(F_multipolemultipole[2] == Approx(-0.0021738198922));
 
     // Test Yukawa-interactions
     C = 3;         // number of cancelled derivatives at origin -2 (starting from second derivative)
@@ -459,6 +472,11 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(F_dipoledipole_Y[0] == Approx(0.002987655338));
     CHECK(F_dipoledipole_Y[1] == Approx(-0.005360251621));
     CHECK(F_dipoledipole_Y[2] == Approx(-0.003081497308));
+
+    vec3 F_multipolemultipole_Y = potY.multipole_multipole_force(zA, zB, muA, muB, r);
+    //CHECK(F_multipolemultipole_Y[0] == Approx(0.003465746010400)); // 0.0034657460104
+    //CHECK(F_multipolemultipole_Y[1] == Approx(-0.005360251621)); //
+    //CHECK(F_multipolemultipole_Y[2] == Approx(-0.003081497308)); //
 
     // CHECK(Poisson(cutoff, 1, -1).short_range_function(0.5) == Approx(Plain().short_range_function(0.5) ));
 }
