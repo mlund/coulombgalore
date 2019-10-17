@@ -32,11 +32,11 @@ Simply copy the `coulombgalore.h` file to your project. All functions and classe
 #include "coulombgalore.h"
 using namespace 
 int main() {
-   Eigen::Vector3d R = {0,0,10};      // distance vector
-   CoulombGalore::Plain pot(14.0);    // cutoff distance as constructor argument
-   std::cout << pot.ion_ion_energy(1.0, 1.0, R.norm()) << "\n"; // --> potential energy = 1.0*1.0/14
+   Eigen::Vector3d R = {0,0,10};                      // distance vector
+   CoulombGalore::Plain pot(14.0);                    // cutoff distance as constructor argument
+   double u = pot.ion_ion_energy(1.0, 1.0, R.norm()); // potential energy = 1.0*1.0/10
 
-   Eigen::Vector3d mu = {2,5,2};      // dipole moment
-   auto E = pot.dipole_field(mu, R);  // field from dipole in R
+   Eigen::Vector3d mu = {2,5,2};                      // dipole moment
+   Eigen::Vector3d E = pot.dipole_field(mu, R);       // field from dipole at 𝐑
 }
 ~~~
