@@ -1,6 +1,7 @@
 # Coulomb Galore
 
-This is a C++ library for calculating the potential, field, forces, and interactions from and between electric multipoles. Focus is on approximate truncation schemes that offer fast alternatives to Ewald summation. All implemented methods are unit tested.
+This is a C++ library for calculating the potential, field, forces, and interactions from and between electric multipoles.
+Focus is on approximate truncation schemes that offer fast alternatives to Ewald summation. All implemented methods are unit tested.
 
 ## Usage
 
@@ -10,6 +11,7 @@ This is a C++ library for calculating the potential, field, forces, and interact
 - The Eigen matrix library
 - nlohmann::json (optional)
 - doctest (optional)
+- doxygen (optional, for building API manual)
 
 ### Building
 
@@ -18,7 +20,8 @@ The CMake build will automatically download Eigen, json, and doctest.
 ~~~ bash
 cmake .
 make
-make test
+make test (optional)
+doxygen (optional)
 ~~~
 
 ### Use in your own code
@@ -28,7 +31,6 @@ Simply copy the `coulombgalore.h` file to your project. All functions and classe
 ### Example
 
 ~~~ cpp
-#include <iostream>
 #include "coulombgalore.h"
 int main() {
    Eigen::Vector3d R = {0,0,10};                      // distance vector
