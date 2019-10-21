@@ -19,13 +19,15 @@ using std::experimental::apply;
 //#error "no std::apply support ='("
 #endif
 
+/** Namespace containing all of CoulombGalore */
 namespace CoulombGalore {
 
-typedef Eigen::Vector3d vec3; //!< typedef for 3d vector
+/** Typedef for 3D vector such a position or dipole moment */
+typedef Eigen::Vector3d vec3;
 
 constexpr double infinity = std::numeric_limits<double>::infinity(); //!< Numerical infinity
 
-//!< Enum defining all possible schemes
+/** Enum defining all possible schemes */
 enum class Scheme { plain, ewald, reactionfield, wolf, poisson, qpotential, fanourgakis, qpotential5, spline };
 
 /**
@@ -66,10 +68,10 @@ constexpr unsigned int binomial(unsigned int n, unsigned int k) {
  * @f[
  *     (a;q)_P = \prod_{n=1}^P(1-aq^{n-1})
  * @f]
- * where @f[ a=q^l @f]. In the implementation we use that
- * @f[
+ * where @f$ a=q^l @f$. In the implementation we use that
+ * @f$
  *     (q^l;q)_P = (1-q)^P\prod_{n=1}^P\sum_{k=0}^{n+l}q^k
- * @f]
+ * @f$
  * which gives simpler expressions for the derivatives.
  *
  * More information here: http://mathworld.wolfram.com/q-PochhammerSymbol.html
@@ -493,6 +495,8 @@ class SchemeBase {
     double invcutoff; // inverse cutoff distance
     double cutoff2;   // square cutoff distance
     double kappa;     // inverse Debye-length
+    double T0;        // Spatial Fourier transformed modified interaction tensor, used to calculate the dielectric constant
+    std::array<double, 2> self_energy_prefactor; // Prefactor for self-energies
 
   public:
     std::string doi;     //!< DOI for original citation
@@ -500,8 +504,7 @@ class SchemeBase {
     Scheme scheme;       //!< Truncation scheme
     double cutoff;       //!< Cut-off distance
     double debye_length; //!< Debye-length
-    double T0; //!< Spatial Fourier transformed modified interaction tensor, used to calculate the dielectric constant
-    std::array<double, 2> self_energy_prefactor; //!< Prefactor for self-energies
+
     inline SchemeBase(Scheme scheme, double cutoff, double debye_length = infinity)
         : scheme(scheme), cutoff(cutoff), debye_length(debye_length) {}
 
@@ -519,14 +522,13 @@ class SchemeBase {
      * @brief Calculate dielectric constant
      * @param M2V see details
      *
-     * @details The paramter @f[ M2V @f] is described by
-     * @f[
+     * @details The paramter `M2V` is described by
+     * @f$
      *     M2V = \frac{\langle M^2\rangle}{ 3\varepsilon_0Vk_BT }
-     * @f]
-     *
-     * where @f[ \langle M^2\rangle @f] is mean value of the system dipole moment squared,
-     * @f[ \varepsilon_0 @f] is the vacuum permittivity, @f[ V @f] the volume of the system,
-     * @f[ k_B @f] the Boltzmann constant, @f[ T @f] the temperature, and @f[ T0 @f] the
+     * @f$
+     * where @f$ \langle M^2\rangle @f$ is mean value of the system dipole moment squared,
+     * @f$ \varepsilon_0 @f$ is the vacuum permittivity, _V_ the volume of the system,
+     * _kB_ the Boltzmann constant, _T_ the temperature, and _T0_ the
      * Spatial Fourier transformed modified interaction tensor.
      */
     double calc_dielectric(double M2V) { return (M2V * T0 + 2.0 * M2V + 1.0) / (M2V * T0 - M2V + 1.0); }
@@ -591,9 +593,9 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
      * @param r distance from charge
      *
      * @details The potential from a charge is described by
-     * @f[
+     * @f$
      *     \Phi(z,r) = \frac{z}{r}s(q)
-     * @f]
+     * @f$
      */
     inline double ion_potential(double z, double r) const override {
         if (r < cutoff) {
@@ -640,9 +642,9 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
      * @param r distance-vector from charge
      *
      * @details The field from a charge is described by
-     * @f[
+     * @f$
      *     {\bf E}(z, {\bf r}) = \frac{z \hat{{\bf r}} }{|{\bf r}|^2} \left( s(q) - qs^{\prime}(q) \right)
-     * @f]
+     * @f$.
      */
     inline vec3 ion_field(double z, const vec3 &r) const {
         double r2 = r.squaredNorm();
@@ -701,10 +703,10 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
      * @param r charge separation
      *
      * @details The interaction energy between two charges is decribed by
-     * @f[
+     * @f$
      *     u(z_A, z_B, r) = z_B \Phi(z_A,r)
-     * @f]
-     * where @f[ \Phi(z_A,r) @f] is the potential from ion A.
+     * @f$
+     * where @f$ \Phi(z_A,r) @f$ is the potential from ion A.
      */
     inline double ion_ion_energy(double zA, double zB, double r) const override { return zB * ion_potential(zA, r); }
 
@@ -716,15 +718,15 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
      * @param r distance-vector between dipole and charge, @f[ {\bf r} = {\bf r}_{\mu} - {\bf r}_z @f]
      *
      * @details The interaction energy between an ion and a dipole is decribed by
-     * @f[
+     * @f$
      *     u(z, \boldsymbol{\mu}, {\bf r}) = z \Phi(\boldsymbol{\mu}, -{\bf r})
-     * @f]
-     * where @f[ \Phi(\boldsymbol{\mu}, -{\bf r}) @f] is the potential from the dipole at the location of the ion.
+     * @f$
+     * where @f$ \Phi(\boldsymbol{\mu}, -{\bf r}) @f$ is the potential from the dipole at the location of the ion.
      * This interaction can also be described by
-     * @f[
+     * @f$
      *     u(z, \boldsymbol{\mu}, {\bf r}) = -\boldsymbol{\mu}\cdot {\bf E}(z, {\bf r})
-     * @f]
-     * where @f[ {\bf E}(z, {\bf r}) @f] is the field from the ion at the location of the dipole.
+     * @f$
+     * where @f$ {\bf E}(z, {\bf r}) @f$ is the field from the ion at the location of the dipole.
      */
     inline double ion_dipole_energy(double z, const vec3 &mu, const vec3 &r) const override {
         // Both expressions below gives same answer. Keep for possible optimization in future.
@@ -733,25 +735,25 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
     }
 
     /**
-     * @brief interaction energy between two dipoles
+     * @brief Interaction energy between two dipoles
      * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
      * @param muA dipole moment of particle A
      * @param muB dipole moment of particle B
      * @param r distance-vector between dipoles, @f[ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f]
      *
      * @details The interaction energy between two dipoles is decribed by
-     * @f[
+     * @f$
      *     u(\boldsymbol{\mu}_A, \boldsymbol{\mu}_B, {\bf r}) = -\boldsymbol{\mu}_A\cdot {\bf E}(\boldsymbol{\mu}_B,
      * {\bf r})
-     * @f]
-     * where @f[ {\bf E}(\boldsymbol{\mu}_B, {\bf r}) @f] is the field from dipole B at the location of dipole A.
+     * @f$
+     * where @f$ {\bf E}(\boldsymbol{\mu}_B, {\bf r}) @f$ is the field from dipole B at the location of dipole A.
      */
     inline double dipole_dipole_energy(const vec3 &muA, const vec3 &muB, const vec3 &r) const override {
         return -muA.dot(dipole_field(muB, r));
     }
 
     /**
-     * @brief interaction energy between two multipoles with charges and dipole moments
+     * @brief Interaction energy between two multipoles with charges and dipole moments
      * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
      * @param zA charge of particle A
      * @param zB charge of particle B
@@ -788,23 +790,23 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
     }
 
     /**
-     * @brief ion-ion interaction force
+     * @brief Ion-ion interaction force
      * @returns interaction force in electrostatic units ( why not Hartree atomic units? )
      * @param zA charge
      * @param zB charge
      * @param r distance-vector between charges, @f[ {\bf r} = {\bf r}_{z_B} - {\bf r}_{z_A} @f]
      *
-     * @details The force between two ions is decribed by
-     * @f[
+     * @details The force between two ions is described by
+     * @f$
      *     {\bf F}(z_A, z_B, {\bf r}) = z_B {\bf E}(z_A, {\bf r})
-     * @f]
-     * where @f[ {\bf E}(z_A, {\bf r}) @f] is the field from ion A at the location of ion B.
+     * @f$
+     * where @f$ {\bf E}(z_A, {\bf r}) @f$ is the field from ion A at the location of ion B.
      */
     inline vec3 ion_ion_force(double zA, double zB, const vec3 &r) const override { return zB * ion_field(zA, r); }
 
     /**
-     * @brief ion-dipole interaction force
-     * @returns interaction force in electrostatic units ( why not Hartree atomic units? )
+     * @brief Ion-dipole interaction force
+     * @returns Interaction force in electrostatic units ( why not Hartree atomic units? )
      * @param z charge
      * @param mu dipole moment
      * @param r distance-vector between dipole and charge, @f[ {\bf r} = {\bf r}_{\mu} - {\bf r}_z @f]
@@ -813,15 +815,15 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
      * @f[
      *     {\bf F}(z, \boldsymbol{\mu}, {\bf r}) = z {\bf E}(\boldsymbol{\mu}, {\bf r})
      * @f]
-     * where @f[ {\bf E}(\boldsymbol{\mu}, {\bf r}) @f] is the field from the dipole at the location of the ion.
+     * where @f$ {\bf E}(\boldsymbol{\mu}, {\bf r}) @f$ is the field from the dipole at the location of the ion.
      */
     inline vec3 ion_dipole_force(double z, const vec3 &mu, const vec3 &r) const override {
         return z * dipole_field(mu, r);
     }
 
     /**
-     * @brief dipole-dipole interaction force
-     * @returns interaction force in electrostatic units ( why not Hartree atomic units? )
+     * @brief Dipole-dipole interaction force
+     * @returns Interaction force in electrostatic units ( why not Hartree atomic units? )
      * @param muA dipole moment of particle A
      * @param muB dipole moment of particle B
      * @param r distance-vector between dipoles, @f[ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f]
@@ -874,8 +876,8 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
     }
 
     /**
-     * @brief interaction force between two multipoles with charges and dipole moments
-     * @returns interaction force in electrostatic units ( why not Hartree atomic units? )
+     * @brief Interaction force between two multipoles with charges and dipole moments
+     * @returns Interaction force in electrostatic units ( why not Hartree atomic units? )
      * @param zA charge of particle A
      * @param zB charge of particle B
      * @param muA dipole moment of particle A
@@ -906,7 +908,6 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
 	    double tmp2 = tmp1 + tmp0;
 	    double tmp3 = (srf * (1.0 + kr) * kr * kr - dsrfq * (2.0 * ( 1.0 + kr) + kr) * kr + ddsrfq2 * (1.0 + 3.0 * kr) - dddsrfq3) / r1;
             
-	    
             vec3 ion_ion = zB * zA * r * (srf * (1.0 + kr) - dsrfq);
 	    //vec3 ion_ion = zB * zA * r * tmp0;
 	    
@@ -922,28 +923,28 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
     }
 
     /**
-     * @brief torque exerted on dipole
-     * @returns torque on dipole in electrostatic units ( why not Hartree atomic units? )
+     * @brief Torque exerted on dipole due to field
+     * @returns Torque on dipole in electrostatic units ( why not Hartree atomic units? )
      * @param mu dipole moment
      * @param E field
      *
      * @details The torque on a dipole in a field is described by
-     * @f[
+     * @f$
      *     \boldsymbol{\tau} = \boldsymbol{\mu} \times \boldsymbol{E}
-     * @f]
+     * @f$
      */
     inline vec3 dipole_torque(const vec3 &mu, const vec3 &E) const { return mu.cross(E); }
 
     /**
-     * @brief self-energy for all type of interactions
+     * @brief Self-energy for all type of interactions
      * @returns self energy in electrostatic units ( why not Hartree atomic units? )
-     * @param m2 vector with square moments, \textit{i.e.} charge squared, dipole moment squared, etc.
+     * @param m2 vector with square moments, i.e. charge squared, dipole moment squared, etc.
      *
      * @details The torque on a dipole in a field is described by
-     * @f[
+     * @f$
      *     u_{self} = p_1 \frac{z^2}{R_c} + p_2 \frac{|\boldsymbol{\mu}|^2}{R_c^3} + \cdots
-     * @f]
-     * where @f[ p_i @f] is the prefactor for the self-energy for species 'i'.
+     * @f$
+     * where @f$ p_i @f$ is the prefactor for the self-energy for species 'i'.
      * Here i=0 represent ions, i=1 represent dipoles etc.
      */
     inline double self_energy(const std::array<double, 2> &m2) const {
@@ -1208,6 +1209,7 @@ class ReactionField : public EnergyImplementation<ReactionField> {
     }
 
 #ifdef NLOHMANN_JSON_HPP
+    /** Construct using JSON object looking for the keywords `cutoff`, `epsRF`, `epsr`, and `shifted` */
     inline ReactionField(const nlohmann::json &j) : ReactionField(j.at("cutoff").get<double>(), j.at("epsRF").get<double>(), j.at("epsr").get<double>(), j.at("shifted").get<bool>()) {}
 
   private:
