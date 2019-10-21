@@ -985,7 +985,7 @@ class Plain : public EnergyImplementation<Plain> {
     inline Plain(double debye_length = infinity) : EnergyImplementation(Scheme::plain, std::numeric_limits<double>::max(), debye_length) {
         name = "plain";
         doi = "Premier mémoire sur l’électricité et le magnétisme by Charles-Augustin de Coulomb"; // :P
-        self_energy_prefactor = {0.0, 0.0};
+        self_energy_prefactor = {0.0, 0.0}; // Both OK!
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
         chi = 0.0; // relevante?
     };
@@ -1041,7 +1041,7 @@ struct Ewald : public EnergyImplementation<Ewald> {
         beta = kappa / (2.0 * alpha);
         beta2 = beta * beta;
         beta3 = beta2 * beta;
-        self_energy_prefactor = {
+        self_energy_prefactor = { // Both OK!
             -alphaRed / pi_sqrt * (std::exp(-beta2) - pi_sqrt * beta * std::erfc(beta)),
             -alphaRed3 * 2.0 / 3.0 / pi_sqrt *
                 (2.0 * pi_sqrt * beta3 * std::erfc(beta) + (1.0 - 2.0 * beta2) * std::exp(-beta2))};
@@ -1194,7 +1194,7 @@ class ReactionField : public EnergyImplementation<ReactionField> {
         epsRF = epsRF;
         epsr = epsr;
         shifted = shifted;
-        self_energy_prefactor = { -3.0 * epsRF * double(shifted) / ( 4.0 * epsRF + 2.0 * epsr ), 0.0};
+        self_energy_prefactor = { -3.0 * epsRF * double(shifted) / ( 4.0 * epsRF + 2.0 * epsr ), -( 2.0 * epsRF - 2.0 * epsr ) / ( 2.0 * ( 2.0 * epsRF + epsr ) ) }; // Should be OK! (not tested)
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
         chi = -6.0 * cutoff * cutoff * pi * ( ( -10.0 * double(shifted) * ( 1.0 / 3.0 ) + 4.0 ) * epsRF + epsr ) / ( ( 5.0 * ( 2.0 * epsRF + epsr ) ) );
     }
@@ -1243,7 +1243,7 @@ class Zahn : public EnergyImplementation<Zahn> {
         name = "Zahn";
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
-        self_energy_prefactor = { -alphaRed * ( 1.0 - std::exp(-alphaRed2) ) / pi_sqrt + 0.5 * std::erfc(alphaRed), 0.0};
+        self_energy_prefactor = { -alphaRed * ( 1.0 - std::exp(-alphaRed2) ) / pi_sqrt + 0.5 * std::erfc(alphaRed), 0.0}; // Dipole self-energy undefined!
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
         chi = -( 2.0 * ( alphaRed * ( alphaRed2 - 3.0 ) * std::exp( -alphaRed2 ) - 0.5 * std::sqrt(pi) * ( ( 7.0 - 3.0 / alphaRed2 ) * std::erf( alphaRed ) - 7.0 ) * alphaRed2 ) ) * cutoff * cutoff * std::sqrt(pi) / ( 3.0 * alphaRed2 );
     }
@@ -1292,7 +1292,7 @@ class Fennell : public EnergyImplementation<Fennell> {
         name = "Fennell";
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
-        self_energy_prefactor = {-alphaRed * ( 1.0 + std::exp( -alphaRed2 ) ) / pi_sqrt - std::erfc( alphaRed ), 0.0};
+        self_energy_prefactor = {-alphaRed * ( 1.0 + std::exp( -alphaRed2 ) ) / pi_sqrt - std::erfc( alphaRed ), 0.0}; // Dipole self-energy undefined!
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
         chi = ( 2.0 * ( ( alphaRed2 + 3.0 ) * alphaRed * std::exp( -alphaRed2 ) + 0.5 * ( std::erf(alphaRed) * alphaRed2 - alphaRed2 - 3.0 * std::erf(alphaRed) ) * std::sqrt(pi) ) ) * std::sqrt(pi) * cutoff * cutoff / ( 3.0 * alphaRed2 );
     }
@@ -1341,7 +1341,7 @@ class ZeroDipole : public EnergyImplementation<ZeroDipole> {
         name = "ZeroDipole";
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
-        self_energy_prefactor = {-alphaRed * ( 1.0 + 0.5 * std::exp( -alphaRed2 ) ) / pi_sqrt - 0.75 * std::erfc( alphaRed ), 0.0};
+        self_energy_prefactor = {-alphaRed * ( 1.0 + 0.5 * std::exp( -alphaRed2 ) ) / pi_sqrt - 0.75 * std::erfc( alphaRed ), -alphaRed * ( 2.0 * alphaRed2 * ( 1.0 / 3.0 ) + std::exp(-alphaRed2) ) / pi_sqrt - 0.5 * std::erfc(alphaRed)}; // Should be OK! (not tested)
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
         chi = cutoff * cutoff * ( ( 6.0 * alphaRed2 - 15.0 ) * std::erf(alphaRed) * pi - 6.0 * pi * alphaRed2 + ( 8.0 * alphaRed2 + 30.0 ) * alphaRed * std::exp(-alphaRed2) * std::sqrt(pi) ) / ( 15.0 * alphaRed2 );
     }
@@ -1558,7 +1558,7 @@ class Poisson : public EnergyImplementation<Poisson> {
             a1 *= -2.0 * kappaRed * yukawa_denom;
         }
         binomCDC = double(binomial(C + D, C) * D);
-        self_energy_prefactor = {0.5*a1, 0.0};
+        self_energy_prefactor = {0.5*a1, 0.0}; // Dipole self-energy seems to be 0 for C >= 2
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) +
              short_range_function(0.0); // Is this OK for Yukawa-interactions?
         chi = -2.0 * std::acos(-1.0) * cutoff * cutoff * ( 1.0 + double(C) ) * ( 2.0 + double(C) ) / ( 3.0 * double(D + 1 + C) * double( D + 2 + C ) ); // not confirmed, but have worked for all tested values of 'C' and 'D'
@@ -1666,7 +1666,7 @@ class Fanourgakis : public EnergyImplementation<Fanourgakis> {
     inline Fanourgakis(double cutoff) : EnergyImplementation(Scheme::fanourgakis, cutoff) {
         name = "fanourgakis";
         doi = "10.1063/1.3216520";
-        self_energy_prefactor = {-0.875, 0.0};
+        self_energy_prefactor = {-0.875, 0.0}; // Should be OK! (not tested)
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
         chi = -5.0 * std::acos(-1.0) * cutoff * cutoff / 18.0;
     }
