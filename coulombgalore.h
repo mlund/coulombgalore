@@ -256,7 +256,7 @@ template <typename T = double> class TabulatorBase {
     void setNumdr(T _numdr) { numdr = _numdr; }
 };
 
-/**
+/*
  * @brief Andrea table with logarithmic search
  *
  * Tabulator with logarithmic search.
@@ -301,7 +301,7 @@ template <typename T = double> class Andrea : public TabulatorBase<T> {
         return {zlow, c0, c1, c2, c3, c4, c5};
     }
 
-    /**
+    /*
      * @returns boolean vector.
      * - `[0]==true`: tolerance is approved,
      * - `[1]==true` Repulsive part is found.
@@ -340,7 +340,7 @@ template <typename T = double> class Andrea : public TabulatorBase<T> {
     }
 
   public:
-    /**
+    /*
      * @brief Get tabulated value at f(x)
      * @param d Table data
      * @param r2 value
@@ -355,7 +355,7 @@ template <typename T = double> class Andrea : public TabulatorBase<T> {
                      dz * (d.c[pos6 + 2] + dz * (d.c[pos6 + 3] + dz * (d.c[pos6 + 4] + dz * (d.c[pos6 + 5])))));
     }
 
-    /**
+    /*
      * @brief Get tabulated value at df(x)/dx
      * @param d Table data
      * @param r2 value
@@ -1577,7 +1577,19 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
 
 /**
  * @brief Dynamic scheme where all short ranged functions are splined
- * @tparam spline If false, no splining if performed
+ *
+ * This potential can hold any other scheme by splining all short-ranged
+ * functions. To set to a particular scheme, call the `spline()` function
+ * and pass the arguments required for the particular scheme.
+ *
+ * Example:
+ *
+ * ~~~{.cpp}
+ *    Splined pot;
+ *    double cutoff = 14;
+ *    int order = 3;
+ *    pot.spline<qPotential>(cutoff, order);
+ * ~~~
  */
 class Splined : public EnergyImplementation<Splined> {
   private:
@@ -1585,7 +1597,7 @@ class Splined : public EnergyImplementation<Splined> {
     Tabulate::Andrea<double> splined_srf;                            // spline class
     std::array<Tabulate::TabulatorBase<double>::data, 4> splinedata; // 0=original, 1=first derivative, ...
 
-    void generate_spline_data() {
+    inline void generate_spline_data() {
         assert(pot);
         SchemeBase::operator=(*pot); // copy base data from pot -> Splined
         splined_srf.setTolerance(1e-3, 1e-1);
@@ -1624,10 +1636,10 @@ class Splined : public EnergyImplementation<Splined> {
     }
 #ifdef NLOHMANN_JSON_HPP
   public:
-    void to_json(nlohmann::json &j) const { pot->to_json(j); }
+    inline void to_json(nlohmann::json &j) const { pot->to_json(j); }
 
   private:
-    void _to_json(nlohmann::json &) const override {}
+    inline void _to_json(nlohmann::json &) const override {}
 #endif
 };
 
