@@ -271,6 +271,9 @@ TEST_CASE("[CoulombGalore] Wolf") {
     double alpha = 0.1;   // damping-parameter
     Wolf pot(cutoff, alpha);
 
+    CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.2256786677));
+    CHECK(pot.self_energy({0.0, 2.0}) == Approx(-0.0007522527778));
+
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.04028442542));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.3997546829));
@@ -280,11 +283,49 @@ TEST_CASE("[CoulombGalore] Wolf") {
     testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
 }
 
+TEST_CASE("[CoulombGalore] Reaction-field") {
+    using doctest::Approx;
+    double cutoff = 29.0; // cutoff distance
+    double epsr = 1.0;    // diel. const. of sample
+    double epsRF = 80.0;  // diel. const. of surrounding
+    bool shifted = false;
+    ReactionField pot(cutoff, epsRF, epsr, shifted);
+
+    CHECK(pot.self_energy({4.0, 0.0}) == Approx(0.0));
+    CHECK(pot.self_energy({0.0, 2.0}) == Approx(0.0));
+
+    // Test short-ranged function
+    CHECK(pot.short_range_function(0.5) == Approx(1.061335404));
+    CHECK(pot.short_range_function_derivative(0.5) == Approx(0.3680124224));
+    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(1.472049689));
+    CHECK(pot.short_range_function_third_derivative(0.5) == Approx(2.944099379));
+    CHECK(pot.short_range_function(1.0) == Approx(1.490683230));
+    testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
+
+    shifted = true;
+    ReactionField potS(cutoff, epsRF, epsr, shifted);
+
+    CHECK(potS.self_energy({4.0, 0.0}) == Approx(-0.1028057400));
+    CHECK(potS.self_energy({0.0, 2.0}) == Approx(0.0));
+
+    // Test short-ranged function
+    CHECK(potS.short_range_function(0.5) == Approx(0.3159937888));
+    CHECK(potS.short_range_function_derivative(0.5) == Approx(-1.122670807));
+    CHECK(potS.short_range_function_second_derivative(0.5) == Approx(1.472049689));
+    CHECK(potS.short_range_function_third_derivative(0.5) == Approx(2.944099379));
+    CHECK(potS.short_range_function(1.0) == Approx(0.0));
+    //testDerivatives(potS, 0.5); // Compare differentiation with numerical diff.
+}
+
 TEST_CASE("[CoulombGalore] qPotential") {
     using doctest::Approx;
     double cutoff = 29.0; // cutoff distance
     int order = 4;        // number of higher order moments to cancel - 1
     qPotential pot(cutoff, order);
+
+    CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.06896551724));
+    CHECK(pot.self_energy({0.0, 2.0}) == Approx(-0.000041002091105));
+
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.3076171875));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-1.453125));
@@ -305,6 +346,10 @@ TEST_CASE("[CoulombGalore] Fanourgakis") {
     using doctest::Approx;
     double cutoff = 29.0; // cutoff distance
     Fanourgakis pot(cutoff);
+
+    CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.120689655172414));
+    CHECK(pot.self_energy({0.0, 2.0}) == Approx(0.0));
+
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.1992187500));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-1.1484375));
@@ -324,6 +369,9 @@ TEST_CASE("[CoulombGalore] Ewald real-space") {
     double eps_sur = infinity;
     Ewald pot(cutoff, alpha, eps_sur);
 
+    CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.2256758334));
+    CHECK(pot.self_energy({0.0, 2.0}) == Approx(-0.0007522527778));
+
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.04030497436));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.399713585));
@@ -334,6 +382,9 @@ TEST_CASE("[CoulombGalore] Ewald real-space") {
 
     double debye_length = 23.0;
     Ewald potY(cutoff, alpha, eps_sur, debye_length);
+
+    CHECK(potY.self_energy({4.0, 0.0}) == Approx(-0.1493013040));
+    CHECK(potY.self_energy({0.0, 2.0}) == Approx(-0.0006704901976));
 
     // Test short-ranged function
     CHECK(potY.short_range_function(0.5) == Approx(0.07306333588));
@@ -348,6 +399,9 @@ TEST_CASE("[CoulombGalore] Poisson") {
     signed D = 3;         // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
     double cutoff = 29.0; // cutoff distance
     Poisson pot33(cutoff, C, D);
+
+    CHECK(pot33.self_energy({4.0, 0.0}) == Approx(-0.137931034482759));
+    CHECK(pot33.self_energy({0.0, 2.0}) == Approx(0.0));
 
     // Test short-ranged function
     CHECK(pot33.short_range_function(0.5) == Approx(0.15625));
@@ -442,6 +496,9 @@ TEST_CASE("[CoulombGalore] Poisson") {
     cutoff = 29.0; // cutoff distance
     double debye_length = 23.0;
     Poisson potY(cutoff, C, D, debye_length);
+
+    CHECK(potY.self_energy({4.0, 0.0}) == Approx(-0.03037721287));
+    CHECK(potY.self_energy({0.0, 2.0}) == Approx(0.0));
 
     // Test short-ranged function
     CHECK(potY.short_range_function(0.5) == Approx(0.5673222034));

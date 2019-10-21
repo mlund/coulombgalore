@@ -24,7 +24,7 @@ typedef Eigen::Vector3d vec3; //!< typedef for 3d vector
 constexpr double infinity = std::numeric_limits<double>::infinity(); //!< Numerical infinity
 
 //!< Enum defining all possible schemes
-enum class Scheme { plain, ewald, wolf, poissonsimple, poisson, qpotential, fanourgakis, qpotential5, spline };
+enum class Scheme { plain, ewald, reactionfield, wolf, poisson, qpotential, fanourgakis, qpotential5, spline };
 
 /**
  * @brief n'th integer power of float
@@ -1018,7 +1018,7 @@ struct Ewald : public EnergyImplementation<Ewald> {
         beta2 = beta * beta;
         beta3 = beta2 * beta;
         self_energy_prefactor = {
-            -alphaRed / pi_sqrt * (std::exp(-beta2) + pi_sqrt * beta * std::erf(beta)),
+            -alphaRed / pi_sqrt * (std::exp(-beta2) - pi_sqrt * beta * std::erfc(beta)),
             -alphaRed3 * 2.0 / 3.0 / pi_sqrt *
                 (2.0 * pi_sqrt * beta3 * std::erfc(beta) + (1.0 - 2.0 * beta2) * std::exp(-beta2))};
     }
@@ -1074,7 +1074,7 @@ struct Ewald : public EnergyImplementation<Ewald> {
 		    double nv1 = double( nv.norm() );
                     if( nv1 > 0 && nv1 <= nmax) {
                         kvec.push_back(kv);
-                        Ak.push_back( std::exp( -k2 / 4.0 / alpha2 ) / k2 );
+                        Ak.push_back( std::exp( -k2 / 4.0 / alpha2 - beta2 ) / k2 );
                         kvec_size++;
                     }
                 }
@@ -1164,6 +1164,56 @@ struct Ewald : public EnergyImplementation<Ewald> {
 #endif
 };
 
+// -------------- Reaction-field ---------------
+
+/**
+ * @brief Reaction-field scheme
+ */
+class ReactionField : public EnergyImplementation<ReactionField> {
+  private:
+    double epsRF;               //!< Relative permittivity of the surrounding medium
+    double epsr;                //!< Relative permittivity of the dispersing medium
+    bool shifted;               //!< Shifted to zero potential at the cut-off
+
+  public:
+    /**
+     * @param cutoff distance cutoff
+     * @param epsRF dielectric constant of the surrounding
+     * @param epsr dielectric constant of the sample
+     * @param shifted shifted potential
+     */
+    inline ReactionField(double cutoff, double epsRF, double epsr, bool shifted) : EnergyImplementation(Scheme::reactionfield, cutoff), epsRF(epsRF), epsr(epsr), shifted(shifted) {
+        name = "Reaction-field";
+        epsRF = epsRF;
+        epsr = epsr;
+	shifted = shifted;
+        self_energy_prefactor = { -3.0 * epsRF * double(shifted) / ( 4.0 * epsRF + 2.0 * epsr ), 0.0};
+        T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
+    }
+
+    inline double short_range_function(double q) const override {
+        return ( 1.0 + ( epsRF - epsr ) * q * q * q / ( 2.0 * epsRF + epsr ) - 3.0 * epsRF * q / ( 2.0 * epsRF + epsr ) * double(shifted) );
+    }
+    inline double short_range_function_derivative(double q) const override {
+        return ( 3.0 * ( epsRF - epsr ) * q * q / ( 2.0 * epsRF + epsr ) - 3.0 * epsRF * double(shifted) / ( 2.0 * epsRF + epsr ) );
+    }
+    inline double short_range_function_second_derivative(double q) const override {
+        return 6.0 * ( epsRF - epsr ) * q / ( 2.0 * epsRF + epsr );
+    }
+    inline double short_range_function_third_derivative(double q) const override {
+        return 6.0 * ( epsRF - epsr ) / ( 2.0 * epsRF + epsr );
+    }
+
+#ifdef NLOHMANN_JSON_HPP
+    inline ReactionField(const nlohmann::json &j) : ReactionField(j.at("cutoff").get<double>(), j.at("epsRF").get<double>(), j.at("epsr").get<double>(), j.at("shifted").get<bool>()) {}
+
+  private:
+    inline void _to_json(nlohmann::json &j) const override {
+        j = {{"epsr", epsr}, { "epsRF", epsRF }, { "shifted", shifted }};
+    }
+#endif
+};
+
 // -------------- Wolf ---------------
 
 /**
@@ -1184,7 +1234,7 @@ class Wolf : public EnergyImplementation<Wolf> {
         name = "Wolf";
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
-        self_energy_prefactor = {-alphaRed / pi_sqrt, -powi(alphaRed, 3) * 2.0 / 3.0 / pi_sqrt};
+        self_energy_prefactor = {-alphaRed / pi_sqrt - std::erfc(alphaRed)/2.0, -powi(alphaRed, 3) * 2.0 / 3.0 / pi_sqrt};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
 
@@ -1225,7 +1275,7 @@ template <int order> class qPotentialFixedOrder : public EnergyImplementation<qP
     inline qPotentialFixedOrder(double cutoff) : base(Scheme::qpotential, cutoff) {
         name = "qpotential";
         this->doi = "10/c5fr";
-        self_energy_prefactor = {-1.0, -1.0};
+        self_energy_prefactor = {-0.5, -0.5};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
 
@@ -1265,7 +1315,7 @@ class qPotential : public EnergyImplementation<qPotential> {
     inline qPotential(double cutoff, int order) : EnergyImplementation(Scheme::qpotential, cutoff), order(order) {
         name = "qpotential";
         doi = "10/c5fr";
-        self_energy_prefactor = {-1.0, -1.0};
+        self_energy_prefactor = {-0.5, -0.5};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
 
@@ -1287,61 +1337,6 @@ class qPotential : public EnergyImplementation<qPotential> {
   private:
     inline void _to_json(nlohmann::json &j) const override {
         j = {{ "order", order }};
-    }
-#endif
-};
-
-// -------------- Poisson --------------- Remove?!
-
-class PoissonSimple : public EnergyImplementation<PoissonSimple> {
-  private:
-    signed int C, D; //!< Number of derivatives to cancel
-
-  public:
-    inline PoissonSimple(double cutoff, signed int C, signed int D)
-        : EnergyImplementation(Scheme::poisson, cutoff), C(C), D(D) {
-        if ((C < 1) || (D < -1))
-            throw std::runtime_error("`C` must be larger than zero and `D` must be larger or equal to negative one");
-        name = "poisson";
-        doi = "10/c5fr";
-        double a1 = -double(C + D) / double(C);
-        self_energy_prefactor = {a1, a1};
-        T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
-    }
-
-    inline double short_range_function(double q) const override {
-        double tmp = 0;
-        for (signed int c = 0; c < C; c++)
-            tmp += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * powi(q, c);
-        return powi(1.0 - q, D + 1) * tmp;
-    }
-
-    inline double short_range_function_derivative(double q) const override {
-        double tmp1 = 1.0;
-        double tmp2 = 0.0;
-        for (signed int c = 1; c < C; c++) {
-            tmp1 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * powi(q, c);
-            tmp2 += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * double(c) * powi(q, c - 1);
-        }
-        return (-double(D + 1) * powi(1.0 - q, D) * tmp1 + powi(1.0 - q, D + 1) * tmp2);
-    }
-
-    inline double short_range_function_second_derivative(double q) const override {
-        return double(binomial(C + D, C) * D) * powi(1.0 - q, D - 1) * powi(q, C - 1);
-    };
-
-    inline double short_range_function_third_derivative(double q) const override {
-        return double(binomial(C + D, C) * D) * powi(1.0 - q, D - 2) * powi(q, C - 2) *
-               ((2.0 - double(C + D)) * q + double(C) - 1.0);
-    };
-
-#ifdef NLOHMANN_JSON_HPP
-    inline PoissonSimple(const nlohmann::json &j)
-        : PoissonSimple(j.at("cutoff").get<double>(), j.at("C").get<int>(), j.at("D").get<int>()) {}
-
-  private:
-    inline void _to_json(nlohmann::json &j) const override {
-        j = {{"C", C}, { "D", D }};
     }
 #endif
 };
@@ -1376,6 +1371,8 @@ class PoissonSimple : public EnergyImplementation<PoissonSimple> {
  *  More info:
  *
  *  - http://dx.doi.org/10.1088/1367-2630/ab1ec1
+ *
+ * @warning Need to fix Yukawa-dipole self-energy
  */
 class Poisson : public EnergyImplementation<Poisson> {
   private:
@@ -1401,7 +1398,7 @@ class Poisson : public EnergyImplementation<Poisson> {
             a1 *= -2.0 * kappaRed * yukawa_denom;
         }
         binomCDC = double(binomial(C + D, C) * D);
-        self_energy_prefactor = {a1, a1};
+        self_energy_prefactor = {0.5*a1, 0.0};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) +
              short_range_function(0.0); // Is this OK for Yukawa-interactions?
     }
@@ -1505,10 +1502,10 @@ class Fanourgakis : public EnergyImplementation<Fanourgakis> {
     /**
      * @param cutoff distance cutoff
      */
-    inline Fanourgakis(double cutoff) : EnergyImplementation(Scheme::qpotential, cutoff) {
+    inline Fanourgakis(double cutoff) : EnergyImplementation(Scheme::fanourgakis, cutoff) {
         name = "fanourgakis";
         doi = "10.1063/1.3216520";
-        self_energy_prefactor = {-1.0, -1.0};
+        self_energy_prefactor = {-0.875, 0.0};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
     }
 
@@ -1539,7 +1536,6 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
                                              {"qpotential", Scheme::qpotential},
                                              {"wolf", Scheme::wolf},
                                              {"poisson", Scheme::poisson},
-                                             {"poissonsimple", Scheme::poissonsimple},
                                              {"spline", Scheme::spline},
                                              {"fanourgakis", Scheme::fanourgakis},
                                              {"ewald", Scheme::ewald}}; // map string keyword to scheme type
@@ -1565,9 +1561,6 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
         break;
     case Scheme::qpotential:
         scheme = std::make_shared<qPotential>(j);
-        break;
-    case Scheme::poissonsimple:
-        scheme = std::make_shared<PoissonSimple>(j);
         break;
     case Scheme::ewald:
         scheme = std::make_shared<Ewald>(j);
