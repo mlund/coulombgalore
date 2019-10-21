@@ -32,7 +32,7 @@ Simply copy the `coulombgalore.h` file to your project. All functions and classe
 
 ### Example
 
-~~~ cpp
+~~~{.cpp}
 #include "coulombgalore.h"
 int main() {
    Eigen::Vector3d R = {0,0,10};                      // distance vector
@@ -48,12 +48,15 @@ int main() {
 
 Class name      | Link 
 --------------- | ----------------------------------- 
-`Plain`         | http://doi.org/ctnnsj
 `Ewald`         | http://doi.org/dgpdmc
-`ReactionField` | http://doi.org/dbs99w
-`Poisson`       | http://doi.org/10/c5fr
 `Fanourgakis`   | http://doi.org/f639q5
+`Fennell`       | http://
+`Plain`         | http://doi.org/ctnnsj
+`Poisson`       | http://doi.org/10/c5fr
 `qPotential`    | https://arxiv.org/abs/1904.10335
+`ReactionField` | http://doi.org/dbs99w
 `Wolf`          | http://doi.org/cfcxdk
+`Zahn`          | http://
+`ZeroDipole`    | http://
 `Splined`       | Splined version of any of the above
 
