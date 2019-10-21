@@ -4,6 +4,8 @@
 #include <limits>
 #include <cmath>
 #include <iostream>
+#include <vector>
+#include <array>
 #include <Eigen/Core>
 
 // https://en.cppreference.com/w/User:D41D8CD98F/feature_testing_macros#C.2B.2B17
@@ -505,15 +507,16 @@ class SchemeBase {
 
     virtual ~SchemeBase() = default;
 
-    virtual double reciprocal_energy(std::vector<vec3>, std::vector<double>, std::vector<vec3>, vec3, int) const { return 0.0; }
+    virtual double reciprocal_energy(const std::vector<vec3> &, const std::vector<double> &, const std::vector<vec3> &,
+                                     const vec3 &, int) const { return 0.0; }
 
-    virtual double surface_energy(std::vector<vec3>, std::vector<double>, std::vector<vec3>, double) const { return 0.0; }
+    virtual double surface_energy(const std::vector<vec3> &, const std::vector<double> &, const std::vector<vec3> &, double) const { return 0.0; }
 
-    virtual double charge_compensation_energy(std::vector<double>, double) const {return 0.0; }
+    virtual double charge_compensation_energy(const std::vector<double> &, double) const {return 0.0; }
 
     virtual vec3 reciprocal_force(std::vector<vec3>, std::vector<double>, std::vector<vec3>, int, vec3, int) const { return {0.0,0.0,0.0}; }
 
-    virtual vec3 surface_force(std::vector<vec3>, std::vector<double>, std::vector<vec3>, int, double) const { return {0.0,0.0,0.0}; }
+    virtual vec3 surface_force(const std::vector<vec3> &, const std::vector<double> &, const std::vector<vec3> &, int, double) const { return {0.0,0.0,0.0}; }
 
     virtual vec3 charge_compensation_force(std::vector<double>, vec3) const {return {0.0,0.0,0.0}; }
 
@@ -1055,13 +1058,11 @@ struct Ewald : public EnergyImplementation<Ewald> {
      * @param nmax Cut-off in reciprocal-space
      * @note Uses spherical cut-off in summation
      */
-    inline double reciprocal_energy(std::vector<vec3> positions, std::vector<double> charges, std::vector<vec3> dipoles, vec3 L, int nmax) const {
+    inline double reciprocal_energy(const std::vector<vec3> &positions, const std::vector<double> &charges,
+                                    const std::vector<vec3> &dipoles, const vec3 &L, int nmax) const override {
+        assert(positions.size() == charges.size());
+        assert(positions.size() == dipoles.size());
         double volume = L[0]*L[1]*L[2];
-        if( std::abs( int(positions.size()) - int(charges.size()) ) > 0 ||
-                std::abs( int(positions.size()) - int(dipoles.size()) ) > 0 ||
-                std::abs( int(charges.size()) - int(dipoles.size()) ) > 0 )
-            throw std::runtime_error("Vectors must have same size!");
-
         std::vector<vec3> kvec;
         std::vector<double> Ak;
         int kvec_size = 0;
@@ -1103,12 +1104,10 @@ struct Ewald : public EnergyImplementation<Ewald> {
      * @param dipoles Dipole moments of particles
      * @param volume Volume of unit-cell
      */
-    inline double surface_energy(std::vector<vec3> positions, std::vector<double> charges, std::vector<vec3> dipoles, double volume) const {
-        if( std::abs( int(positions.size()) - int(charges.size()) ) > 0 ||
-                std::abs( int(positions.size()) - int(dipoles.size()) ) > 0 ||
-                std::abs( int(charges.size()) - int(dipoles.size()) ) > 0 )
-            throw std::runtime_error("Vectors must have same size!");
-
+    inline double surface_energy(const std::vector<vec3> &positions, const std::vector<double> &charges,
+                                 const std::vector<vec3> &dipoles, double volume) const override {
+        assert(positions.size() == charges.size());
+        assert(positions.size() == dipoles.size());
         vec3 sum_r_charges = {0.0,0.0,0.0};
         vec3 sum_dipoles = {0.0,0.0,0.0};
         for(unsigned int i = 0; i < positions.size(); i++) {
@@ -1119,11 +1118,10 @@ struct Ewald : public EnergyImplementation<Ewald> {
         return ( 2.0 * pi / ( 2.0 * eps_sur + 1.0 ) / volume * sqDipoles );
     }
 
-    inline vec3 surface_force(std::vector<vec3> positions, std::vector<double> charges, std::vector<vec3> dipoles, int I, double volume) const {
-        if( std::abs( int(positions.size()) - int(charges.size()) ) > 0 ||
-                std::abs( int(positions.size()) - int(dipoles.size()) ) > 0 ||
-                std::abs( int(charges.size()) - int(dipoles.size()) ) > 0 )
-            throw std::runtime_error("Vectors must have same size!");
+    inline vec3 surface_force(const std::vector<vec3> &positions, const std::vector<double> &charges,
+                              const std::vector<vec3> &dipoles, int I, double volume) const override {
+        assert(positions.size() == charges.size());
+        assert(positions.size() == dipoles.size());
 
         vec3 sum_r_charges = {0.0,0.0,0.0};
         vec3 sum_dipoles = {0.0,0.0,0.0};
@@ -1131,7 +1129,7 @@ struct Ewald : public EnergyImplementation<Ewald> {
             sum_r_charges += positions.at(i) * charges.at(i);
             sum_dipoles += dipoles.at(i);
         }
-        double sqDipoles = 0.0;
+        //double sqDipoles = 0.0;
         return ( -4.0*pi/(2.0*eps_sur + 1.0)/volume * charges.at(I) *(sum_r_charges + sum_dipoles) );
     }
 
@@ -1141,7 +1139,7 @@ struct Ewald : public EnergyImplementation<Ewald> {
      * @param volume Volume of unit-cell
      * @note DOI:10.1021/ct400626b
      */
-    inline double charge_compensation_energy(std::vector<double> charges, double volume) const {
+    inline double charge_compensation_energy(const std::vector<double> &charges, double volume) const override {
         double squaredSumQ = 0.0;
         for(unsigned int i = 0; i < charges.size(); i++)
             squaredSumQ += charges.at(i);
@@ -1178,8 +1176,8 @@ class ReactionField : public EnergyImplementation<ReactionField> {
   public:
     /**
      * @param cutoff distance cutoff
-     * @param epsRF dielectric constant of the surrounding
-     * @param epsr dielectric constant of the sample
+     * @param epsRF relative dielectric constant of the surrounding
+     * @param epsr relative dielectric constant of the sample
      * @param shifted shifted potential
      */
     inline ReactionField(double cutoff, double epsRF, double epsr, bool shifted) : EnergyImplementation(Scheme::reactionfield, cutoff), epsRF(epsRF), epsr(epsr), shifted(shifted) {
@@ -1200,7 +1198,7 @@ class ReactionField : public EnergyImplementation<ReactionField> {
     inline double short_range_function_second_derivative(double q) const override {
         return 6.0 * ( epsRF - epsr ) * q / ( 2.0 * epsRF + epsr );
     }
-    inline double short_range_function_third_derivative(double q) const override {
+    inline double short_range_function_third_derivative(double) const override {
         return 6.0 * ( epsRF - epsr ) / ( 2.0 * epsRF + epsr );
     }
 

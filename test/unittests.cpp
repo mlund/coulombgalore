@@ -485,7 +485,7 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(F_dipoledipole[1] == Approx(-0.002797126801));
     CHECK(F_dipoledipole[2] == Approx(-0.001608010094));
 
-    vec3 F_multipolemultipole = pot43.multipole_multipole_force(zA, zB, muA, muB, r);
+    //vec3 F_multipolemultipole = pot43.multipole_multipole_force(zA, zB, muA, muB, r);
     //CHECK(F_multipolemultipole[0] == Approx(0.022837973641));
     //CHECK(F_multipolemultipole[1] == Approx(-0.003520837008));
     //CHECK(F_multipolemultipole[2] == Approx(-0.0021738198922));
@@ -530,7 +530,7 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(F_dipoledipole_Y[1] == Approx(-0.005360251621));
     CHECK(F_dipoledipole_Y[2] == Approx(-0.003081497308));
 
-    vec3 F_multipolemultipole_Y = potY.multipole_multipole_force(zA, zB, muA, muB, r);
+    //vec3 F_multipolemultipole_Y = potY.multipole_multipole_force(zA, zB, muA, muB, r);
     //CHECK(F_multipolemultipole_Y[0] == Approx(0.003465746010400)); // 0.0034657460104
     //CHECK(F_multipolemultipole_Y[1] == Approx(-0.005360251621)); //
     //CHECK(F_multipolemultipole_Y[2] == Approx(-0.003081497308)); //
