@@ -277,8 +277,62 @@ TEST_CASE("[CoulombGalore] Wolf") {
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.04028442542));
     CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.3997546829));
-    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.36159125));
+    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.361591250));
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
+    CHECK(pot.short_range_function(1.0) == Approx(0.0));
+    testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
+}
+
+TEST_CASE("[CoulombGalore] Zahn") {
+    using doctest::Approx;
+    double cutoff = 29.0; // cutoff distance
+    double alpha = 0.1;   // damping-parameter
+    Zahn pot(cutoff, alpha);
+
+    CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.2256227568));
+    CHECK(pot.self_energy({0.0, 2.0}) == Approx(0.0));
+
+    // Test short-ranged function
+    CHECK(pot.short_range_function(0.5) == Approx(0.04049737684));
+    CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.3997135850));
+    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.360052030));
+    CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
+    CHECK(pot.short_range_function(1.0) == Approx(0.0000410979));
+    testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
+}
+
+TEST_CASE("[CoulombGalore] Fennell") {
+    using doctest::Approx;
+    double cutoff = 29.0; // cutoff distance
+    double alpha = 0.1;   // damping-parameter
+    Fennell pot(cutoff, alpha);
+
+    CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.2257317442));
+    CHECK(pot.self_energy({0.0, 2.0}) == Approx(0.0));
+
+    // Test short-ranged function
+    CHECK(pot.short_range_function(0.5) == Approx(0.04009202308));
+    CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.3997546830));
+    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.363130468));
+    CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
+    CHECK(pot.short_range_function(1.0) == Approx(0.0));
+    testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
+}
+
+TEST_CASE("[CoulombGalore] ZeroDipole") {
+    using doctest::Approx;
+    double cutoff = 29.0; // cutoff distance
+    double alpha = 0.1;   // damping-parameter
+    ZeroDipole pot(cutoff, alpha);
+
+    CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.2257052059));
+    CHECK(pot.self_energy({0.0, 2.0}) == Approx(0.0));
+
+    // Test short-ranged function
+    CHECK(pot.short_range_function(0.5) == Approx(0.04014012381));
+    CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.3998508840));
+    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.362745664));
+    CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54549108));
     CHECK(pot.short_range_function(1.0) == Approx(0.0));
     testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
 }
