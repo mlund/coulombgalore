@@ -4,6 +4,8 @@
 #include <limits>
 #include <cmath>
 #include <iostream>
+#include <vector>
+#include <array>
 #include <Eigen/Core>
 
 // https://en.cppreference.com/w/User:D41D8CD98F/feature_testing_macros#C.2B.2B17
@@ -1055,7 +1057,7 @@ struct Ewald : public EnergyImplementation<Ewald> {
      * @param nmax Cut-off in reciprocal-space
      * @note Uses spherical cut-off in summation
      */
-    inline double reciprocal_energy(std::vector<vec3> positions, std::vector<double> charges, std::vector<vec3> dipoles, vec3 L, int nmax) const {
+    inline double reciprocal_energy(std::vector<vec3> positions, std::vector<double> charges, std::vector<vec3> dipoles, vec3 L, int nmax) const override {
         double volume = L[0]*L[1]*L[2];
         if( std::abs( int(positions.size()) - int(charges.size()) ) > 0 ||
                 std::abs( int(positions.size()) - int(dipoles.size()) ) > 0 ||
@@ -1103,7 +1105,7 @@ struct Ewald : public EnergyImplementation<Ewald> {
      * @param dipoles Dipole moments of particles
      * @param volume Volume of unit-cell
      */
-    inline double surface_energy(std::vector<vec3> positions, std::vector<double> charges, std::vector<vec3> dipoles, double volume) const {
+    inline double surface_energy(std::vector<vec3> positions, std::vector<double> charges, std::vector<vec3> dipoles, double volume) const override {
         if( std::abs( int(positions.size()) - int(charges.size()) ) > 0 ||
                 std::abs( int(positions.size()) - int(dipoles.size()) ) > 0 ||
                 std::abs( int(charges.size()) - int(dipoles.size()) ) > 0 )
@@ -1119,7 +1121,7 @@ struct Ewald : public EnergyImplementation<Ewald> {
         return ( 2.0 * pi / ( 2.0 * eps_sur + 1.0 ) / volume * sqDipoles );
     }
 
-    inline vec3 surface_force(std::vector<vec3> positions, std::vector<double> charges, std::vector<vec3> dipoles, int I, double volume) const {
+    inline vec3 surface_force(std::vector<vec3> positions, std::vector<double> charges, std::vector<vec3> dipoles, int I, double volume) const override {
         if( std::abs( int(positions.size()) - int(charges.size()) ) > 0 ||
                 std::abs( int(positions.size()) - int(dipoles.size()) ) > 0 ||
                 std::abs( int(charges.size()) - int(dipoles.size()) ) > 0 )
@@ -1141,7 +1143,7 @@ struct Ewald : public EnergyImplementation<Ewald> {
      * @param volume Volume of unit-cell
      * @note DOI:10.1021/ct400626b
      */
-    inline double charge_compensation_energy(std::vector<double> charges, double volume) const {
+    inline double charge_compensation_energy(std::vector<double> charges, double volume) const override {
         double squaredSumQ = 0.0;
         for(unsigned int i = 0; i < charges.size(); i++)
             squaredSumQ += charges.at(i);
