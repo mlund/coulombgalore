@@ -24,7 +24,7 @@ typedef Eigen::Vector3d vec3; //!< typedef for 3d vector
 constexpr double infinity = std::numeric_limits<double>::infinity(); //!< Numerical infinity
 
 //!< Enum defining all possible schemes
-enum class Scheme { plain, ewald, reactionfield, wolf, poisson, qpotential, fanourgakis, qpotential5, spline };
+enum class Scheme { plain, ewald, reactionfield, wolf, poisson, qpotential, fanourgakis, zahn, qpotential5, spline };
 
 /**
  * @brief n'th integer power of float
@@ -1214,6 +1214,53 @@ class ReactionField : public EnergyImplementation<ReactionField> {
 #endif
 };
 
+// -------------- Zahn ---------------
+
+/**
+ * @brief Zahn scheme
+ */
+class Zahn : public EnergyImplementation<Zahn> {
+  private:
+    double alpha;               //!< Damping-parameter
+    double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
+    const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
+
+  public:
+    /**
+     * @param cutoff distance cutoff
+     * @param alpha damping-parameter
+     */
+    inline Zahn(double cutoff, double alpha) : EnergyImplementation(Scheme::zahn, cutoff), alpha(alpha) {
+        name = "Zahn";
+        alphaRed = alpha * cutoff;
+        alphaRed2 = alphaRed * alphaRed;
+        self_energy_prefactor = { -alphaRed * ( 1.0 - std::exp(-alphaRed2) ) / pi_sqrt + 0.5 * std::erfc(alphaRed), 0.0};
+        T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
+    }
+
+    inline double short_range_function(double q) const override {
+        return ( std::erfc(alphaRed * q) - ( q - 1.0 ) * q * ( std::erfc( alphaRed ) + 2.0 * alphaRed * std::exp( -alphaRed2 ) / pi_sqrt ) );
+    }//          std::erfc(alphaRed * q) - ( q - 1.0 ) * q * ( std::erfc( alphaRed ) + 2.0 * alphaRed * std::exp( -alphaRed2 ) / pi_sqrt )
+    inline double short_range_function_derivative(double q) const override {
+        return ( -( 4.0 * ( 0.5 * std::exp(-alphaRed2*q*q) * alphaRed + ( alphaRed * std::exp(-alphaRed2) + 0.5 * pi_sqrt * std::erfc(alphaRed) ) * ( q - 0.5 ) ) ) / pi_sqrt );
+    }
+    inline double short_range_function_second_derivative(double q) const override {
+        return ( 4.0 * ( alphaRed2*alphaRed * q * std::exp( -alphaRed2 * q * q ) - alphaRed * std::exp( -alphaRed2 ) - 0.5 * pi_sqrt * std::erfc(alphaRed) ) ) / pi_sqrt;
+    }
+    inline double short_range_function_third_derivative(double q) const override {
+        return ( -8.0 * std::exp( -alphaRed2 * q * q ) * ( alphaRed2 * q*q - 0.5 ) * alphaRed2*alphaRed / pi_sqrt );
+    }
+
+#ifdef NLOHMANN_JSON_HPP
+    inline Zahn(const nlohmann::json &j) : Zahn(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
+
+  private:
+    inline void _to_json(nlohmann::json &j) const override {
+        j = {{ "alpha", alpha }};
+    }
+#endif
+};
+
 // -------------- Wolf ---------------
 
 /**
@@ -1552,6 +1599,9 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
         break;
     case Scheme::wolf:
         scheme = std::make_shared<Wolf>(j);
+        break;
+    case Scheme::zahn:
+        scheme = std::make_shared<Zahn>(j);
         break;
     case Scheme::fanourgakis:
         scheme = std::make_shared<Fanourgakis>(j);

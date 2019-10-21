@@ -283,6 +283,24 @@ TEST_CASE("[CoulombGalore] Wolf") {
     testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
 }
 
+TEST_CASE("[CoulombGalore] Zahn") {
+    using doctest::Approx;
+    double cutoff = 29.0; // cutoff distance
+    double alpha = 0.1;   // damping-parameter
+    Zahn pot(cutoff, alpha);
+
+    CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.2256227568));
+    CHECK(pot.self_energy({0.0, 2.0}) == Approx(0.0));
+
+    // Test short-ranged function
+    CHECK(pot.short_range_function(0.5) == Approx(0.04049737684));
+    CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.3997135850));
+    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.360052030));
+    CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
+    CHECK(pot.short_range_function(1.0) == Approx(0.0000410979));
+    testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
+}
+
 TEST_CASE("[CoulombGalore] Reaction-field") {
     using doctest::Approx;
     double cutoff = 29.0; // cutoff distance
