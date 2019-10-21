@@ -19,13 +19,15 @@ using std::experimental::apply;
 //#error "no std::apply support ='("
 #endif
 
+/** Namespace containing all of CoulombGalore */
 namespace CoulombGalore {
 
-typedef Eigen::Vector3d vec3; //!< typedef for 3d vector
+/** Typedef for 3D vector such a position or dipole moment */
+typedef Eigen::Vector3d vec3;
 
 constexpr double infinity = std::numeric_limits<double>::infinity(); //!< Numerical infinity
 
-//!< Enum defining all possible schemes
+/** Enum defining all possible schemes */
 enum class Scheme { plain, ewald, reactionfield, wolf, poisson, qpotential, fanourgakis, zerodipole, zahn, fennell, qpotential5, spline };
 
 /**
@@ -66,10 +68,10 @@ constexpr unsigned int binomial(unsigned int n, unsigned int k) {
  * @f[
  *     (a;q)_P = \prod_{n=1}^P(1-aq^{n-1})
  * @f]
- * where @f[ a=q^l @f]. In the implementation we use that
- * @f[
+ * where @f$ a=q^l @f$. In the implementation we use that
+ * @f$
  *     (q^l;q)_P = (1-q)^P\prod_{n=1}^P\sum_{k=0}^{n+l}q^k
- * @f]
+ * @f$
  * which gives simpler expressions for the derivatives.
  *
  * More information here: http://mathworld.wolfram.com/q-PochhammerSymbol.html
@@ -256,7 +258,7 @@ template <typename T = double> class TabulatorBase {
     void setNumdr(T _numdr) { numdr = _numdr; }
 };
 
-/**
+/*
  * @brief Andrea table with logarithmic search
  *
  * Tabulator with logarithmic search.
@@ -301,7 +303,7 @@ template <typename T = double> class Andrea : public TabulatorBase<T> {
         return {zlow, c0, c1, c2, c3, c4, c5};
     }
 
-    /**
+    /*
      * @returns boolean vector.
      * - `[0]==true`: tolerance is approved,
      * - `[1]==true` Repulsive part is found.
@@ -340,7 +342,7 @@ template <typename T = double> class Andrea : public TabulatorBase<T> {
     }
 
   public:
-    /**
+    /*
      * @brief Get tabulated value at f(x)
      * @param d Table data
      * @param r2 value
@@ -355,7 +357,7 @@ template <typename T = double> class Andrea : public TabulatorBase<T> {
                      dz * (d.c[pos6 + 2] + dz * (d.c[pos6 + 3] + dz * (d.c[pos6 + 4] + dz * (d.c[pos6 + 5])))));
     }
 
-    /**
+    /*
      * @brief Get tabulated value at df(x)/dx
      * @param d Table data
      * @param r2 value
@@ -495,6 +497,9 @@ class SchemeBase {
     double invcutoff; // inverse cutoff distance
     double cutoff2;   // square cutoff distance
     double kappa;     // inverse Debye-length
+    double T0;        // Spatial Fourier transformed modified interaction tensor, used to calculate the dielectric constant
+    double chi;       //!< Negative integrated volume potential, used to neutralize charged system
+    std::array<double, 2> self_energy_prefactor; // Prefactor for self-energies
 
   public:
     std::string doi;     //!< DOI for original citation
@@ -502,37 +507,29 @@ class SchemeBase {
     Scheme scheme;       //!< Truncation scheme
     double cutoff;       //!< Cut-off distance
     double debye_length; //!< Debye-length
-    double T0;           //!< Spatial Fourier transformed modified interaction tensor, used to calculate the dielectric constant
-    double chi;          //!< Negative integrated volume potential, used to neutralize charged system
-    std::array<double, 2> self_energy_prefactor; //!< Prefactor for self-energies
+  
     inline SchemeBase(Scheme scheme, double cutoff, double debye_length = infinity)
         : scheme(scheme), cutoff(cutoff), debye_length(debye_length) {}
 
     virtual ~SchemeBase() = default;
 
-    virtual double reciprocal_energy(const std::vector<vec3> &, const std::vector<double> &, const std::vector<vec3> &,
-                                     const vec3 &, int) const { return 0.0; }
-
-    virtual double surface_energy(const std::vector<vec3> &, const std::vector<double> &, const std::vector<vec3> &, double) const { return 0.0; }
+    //virtual double surface_energy(const std::vector<vec3> &, const std::vector<double> &, const std::vector<vec3> &, double) const { return 0.0; }
 
     virtual double charge_compensation_energy(const std::vector<double> &, double) const {return 0.0; }
 
-    virtual vec3 reciprocal_force(std::vector<vec3>, std::vector<double>, std::vector<vec3>, int, vec3, int) const { return {0.0,0.0,0.0}; }
-
-    virtual vec3 surface_force(const std::vector<vec3> &, const std::vector<double> &, const std::vector<vec3> &, int, double) const { return {0.0,0.0,0.0}; }
+    //virtual vec3 surface_force(const std::vector<vec3> &, const std::vector<double> &, const std::vector<vec3> &, int, double) const { return {0.0,0.0,0.0}; }
 
     /**
      * @brief Calculate dielectric constant
      * @param M2V see details
      *
-     * @details The paramter @f[ M2V @f] is described by
-     * @f[
+     * @details The paramter `M2V` is described by
+     * @f$
      *     M2V = \frac{\langle M^2\rangle}{ 3\varepsilon_0Vk_BT }
-     * @f]
-     *
-     * where @f[ \langle M^2\rangle @f] is mean value of the system dipole moment squared,
-     * @f[ \varepsilon_0 @f] is the vacuum permittivity, @f[ V @f] the volume of the system,
-     * @f[ k_B @f] the Boltzmann constant, @f[ T @f] the temperature, and @f[ T0 @f] the
+     * @f$
+     * where @f$ \langle M^2\rangle @f$ is mean value of the system dipole moment squared,
+     * @f$ \varepsilon_0 @f$ is the vacuum permittivity, _V_ the volume of the system,
+     * _kB_ the Boltzmann constant, _T_ the temperature, and _T0_ the
      * Spatial Fourier transformed modified interaction tensor.
      */
     double calc_dielectric(double M2V) { return (M2V * T0 + 2.0 * M2V + 1.0) / (M2V * T0 - M2V + 1.0); }
@@ -597,9 +594,9 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
      * @param r distance from charge
      *
      * @details The potential from a charge is described by
-     * @f[
+     * @f$
      *     \Phi(z,r) = \frac{z}{r}s(q)
-     * @f]
+     * @f$
      */
     inline double ion_potential(double z, double r) const override {
         if (r < cutoff) {
@@ -646,9 +643,9 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
      * @param r distance-vector from charge
      *
      * @details The field from a charge is described by
-     * @f[
+     * @f$
      *     {\bf E}(z, {\bf r}) = \frac{z \hat{{\bf r}} }{|{\bf r}|^2} \left( s(q) - qs^{\prime}(q) \right)
-     * @f]
+     * @f$.
      */
     inline vec3 ion_field(double z, const vec3 &r) const {
         double r2 = r.squaredNorm();
@@ -707,10 +704,10 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
      * @param r charge separation
      *
      * @details The interaction energy between two charges is decribed by
-     * @f[
+     * @f$
      *     u(z_A, z_B, r) = z_B \Phi(z_A,r)
-     * @f]
-     * where @f[ \Phi(z_A,r) @f] is the potential from ion A.
+     * @f$
+     * where @f$ \Phi(z_A,r) @f$ is the potential from ion A.
      */
     inline double ion_ion_energy(double zA, double zB, double r) const override { return zB * ion_potential(zA, r); }
 
@@ -722,15 +719,15 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
      * @param r distance-vector between dipole and charge, @f[ {\bf r} = {\bf r}_{\mu} - {\bf r}_z @f]
      *
      * @details The interaction energy between an ion and a dipole is decribed by
-     * @f[
+     * @f$
      *     u(z, \boldsymbol{\mu}, {\bf r}) = z \Phi(\boldsymbol{\mu}, -{\bf r})
-     * @f]
-     * where @f[ \Phi(\boldsymbol{\mu}, -{\bf r}) @f] is the potential from the dipole at the location of the ion.
+     * @f$
+     * where @f$ \Phi(\boldsymbol{\mu}, -{\bf r}) @f$ is the potential from the dipole at the location of the ion.
      * This interaction can also be described by
-     * @f[
+     * @f$
      *     u(z, \boldsymbol{\mu}, {\bf r}) = -\boldsymbol{\mu}\cdot {\bf E}(z, {\bf r})
-     * @f]
-     * where @f[ {\bf E}(z, {\bf r}) @f] is the field from the ion at the location of the dipole.
+     * @f$
+     * where @f$ {\bf E}(z, {\bf r}) @f$ is the field from the ion at the location of the dipole.
      */
     inline double ion_dipole_energy(double z, const vec3 &mu, const vec3 &r) const override {
         // Both expressions below gives same answer. Keep for possible optimization in future.
@@ -739,25 +736,25 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
     }
 
     /**
-     * @brief interaction energy between two dipoles
+     * @brief Interaction energy between two dipoles
      * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
      * @param muA dipole moment of particle A
      * @param muB dipole moment of particle B
      * @param r distance-vector between dipoles, @f[ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f]
      *
      * @details The interaction energy between two dipoles is decribed by
-     * @f[
+     * @f$
      *     u(\boldsymbol{\mu}_A, \boldsymbol{\mu}_B, {\bf r}) = -\boldsymbol{\mu}_A\cdot {\bf E}(\boldsymbol{\mu}_B,
      * {\bf r})
-     * @f]
-     * where @f[ {\bf E}(\boldsymbol{\mu}_B, {\bf r}) @f] is the field from dipole B at the location of dipole A.
+     * @f$
+     * where @f$ {\bf E}(\boldsymbol{\mu}_B, {\bf r}) @f$ is the field from dipole B at the location of dipole A.
      */
     inline double dipole_dipole_energy(const vec3 &muA, const vec3 &muB, const vec3 &r) const override {
         return -muA.dot(dipole_field(muB, r));
     }
 
     /**
-     * @brief interaction energy between two multipoles with charges and dipole moments
+     * @brief Interaction energy between two multipoles with charges and dipole moments
      * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
      * @param zA charge of particle A
      * @param zB charge of particle B
@@ -794,23 +791,23 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
     }
 
     /**
-     * @brief ion-ion interaction force
+     * @brief Ion-ion interaction force
      * @returns interaction force in electrostatic units ( why not Hartree atomic units? )
      * @param zA charge
      * @param zB charge
      * @param r distance-vector between charges, @f[ {\bf r} = {\bf r}_{z_B} - {\bf r}_{z_A} @f]
      *
-     * @details The force between two ions is decribed by
-     * @f[
+     * @details The force between two ions is described by
+     * @f$
      *     {\bf F}(z_A, z_B, {\bf r}) = z_B {\bf E}(z_A, {\bf r})
-     * @f]
-     * where @f[ {\bf E}(z_A, {\bf r}) @f] is the field from ion A at the location of ion B.
+     * @f$
+     * where @f$ {\bf E}(z_A, {\bf r}) @f$ is the field from ion A at the location of ion B.
      */
     inline vec3 ion_ion_force(double zA, double zB, const vec3 &r) const override { return zB * ion_field(zA, r); }
 
     /**
-     * @brief ion-dipole interaction force
-     * @returns interaction force in electrostatic units ( why not Hartree atomic units? )
+     * @brief Ion-dipole interaction force
+     * @returns Interaction force in electrostatic units ( why not Hartree atomic units? )
      * @param z charge
      * @param mu dipole moment
      * @param r distance-vector between dipole and charge, @f[ {\bf r} = {\bf r}_{\mu} - {\bf r}_z @f]
@@ -819,15 +816,15 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
      * @f[
      *     {\bf F}(z, \boldsymbol{\mu}, {\bf r}) = z {\bf E}(\boldsymbol{\mu}, {\bf r})
      * @f]
-     * where @f[ {\bf E}(\boldsymbol{\mu}, {\bf r}) @f] is the field from the dipole at the location of the ion.
+     * where @f$ {\bf E}(\boldsymbol{\mu}, {\bf r}) @f$ is the field from the dipole at the location of the ion.
      */
     inline vec3 ion_dipole_force(double z, const vec3 &mu, const vec3 &r) const override {
         return z * dipole_field(mu, r);
     }
 
     /**
-     * @brief dipole-dipole interaction force
-     * @returns interaction force in electrostatic units ( why not Hartree atomic units? )
+     * @brief Dipole-dipole interaction force
+     * @returns Interaction force in electrostatic units ( why not Hartree atomic units? )
      * @param muA dipole moment of particle A
      * @param muB dipole moment of particle B
      * @param r distance-vector between dipoles, @f[ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f]
@@ -880,8 +877,8 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
     }
 
     /**
-     * @brief interaction force between two multipoles with charges and dipole moments
-     * @returns interaction force in electrostatic units ( why not Hartree atomic units? )
+     * @brief Interaction force between two multipoles with charges and dipole moments
+     * @returns Interaction force in electrostatic units ( why not Hartree atomic units? )
      * @param zA charge of particle A
      * @param zB charge of particle B
      * @param muA dipole moment of particle A
@@ -912,7 +909,6 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
 	    double tmp2 = tmp1 + tmp0;
 	    double tmp3 = (srf * (1.0 + kr) * kr * kr - dsrfq * (2.0 * ( 1.0 + kr) + kr) * kr + ddsrfq2 * (1.0 + 3.0 * kr) - dddsrfq3) / r1;
             
-	    
             vec3 ion_ion = zB * zA * r * (srf * (1.0 + kr) - dsrfq);
 	    //vec3 ion_ion = zB * zA * r * tmp0;
 	    
@@ -928,28 +924,28 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
     }
 
     /**
-     * @brief torque exerted on dipole
-     * @returns torque on dipole in electrostatic units ( why not Hartree atomic units? )
+     * @brief Torque exerted on dipole due to field
+     * @returns Torque on dipole in electrostatic units ( why not Hartree atomic units? )
      * @param mu dipole moment
      * @param E field
      *
      * @details The torque on a dipole in a field is described by
-     * @f[
+     * @f$
      *     \boldsymbol{\tau} = \boldsymbol{\mu} \times \boldsymbol{E}
-     * @f]
+     * @f$
      */
     inline vec3 dipole_torque(const vec3 &mu, const vec3 &E) const { return mu.cross(E); }
 
     /**
-     * @brief self-energy for all type of interactions
+     * @brief Self-energy for all type of interactions
      * @returns self energy in electrostatic units ( why not Hartree atomic units? )
-     * @param m2 vector with square moments, \textit{i.e.} charge squared, dipole moment squared, etc.
+     * @param m2 vector with square moments, i.e. charge squared, dipole moment squared, etc.
      *
      * @details The torque on a dipole in a field is described by
-     * @f[
+     * @f$
      *     u_{self} = p_1 \frac{z^2}{R_c} + p_2 \frac{|\boldsymbol{\mu}|^2}{R_c^3} + \cdots
-     * @f]
-     * where @f[ p_i @f] is the prefactor for the self-energy for species 'i'.
+     * @f$
+     * where @f$ p_i @f$ is the prefactor for the self-energy for species 'i'.
      * Here i=0 represent ions, i=1 represent dipoles etc.
      */
     inline double self_energy(const std::array<double, 2> &m2) const {
@@ -1010,7 +1006,7 @@ class Plain : public EnergyImplementation<Plain> {
  * This expression is only correct if integration is over all space, not just the unit-cell, cf. Eq. 14 in 10.1021/jp951011v. 
  * Thus the implemented expression is roughly -pi / alpha2 for alpha > ~2-3. User beware!
  */
-struct Ewald : public EnergyImplementation<Ewald> {
+class Ewald : public EnergyImplementation<Ewald> {
     double alpha, alpha2;                  //!< Damping-parameter
     double alphaRed, alphaRed2, alphaRed3; //!< Reduced damping-parameter, and squared
     double eps_sur;                        //!< Dielectric constant of the surrounding medium
@@ -1080,40 +1076,48 @@ struct Ewald : public EnergyImplementation<Ewald> {
      * @note Uses spherical cut-off in summation
      */
     inline double reciprocal_energy(const std::vector<vec3> &positions, const std::vector<double> &charges,
-                                    const std::vector<vec3> &dipoles, const vec3 &L, int nmax) const override {
+                                    const std::vector<vec3> &dipoles, const vec3 &L, int nmax) const {
+
         assert(positions.size() == charges.size());
         assert(positions.size() == dipoles.size());
+
         double volume = L[0]*L[1]*L[2];
         std::vector<vec3> kvec;
         std::vector<double> Ak;
-        int kvec_size = 0;
+        //kvec.reserve( expected_size_of_kvec ); // speeds up push_back below
+        //Ak.reserve( expected_size_of_Ak ); // speeds up push_back below
         for(int nx = -nmax; nx < nmax+1; nx++) {
             for(int ny = -nmax; ny < nmax+1; ny++) {
                 for(int nz = -nmax; nz < nmax+1; nz++) {
                     vec3 kv = { 2.0 * pi * nx / L[0] , 2.0 * pi * ny / L[1] , 2.0 * pi * nz / L[2] };
-                    double k2 = double( kv.squaredNorm() ) + kappa2;
+                    double k2 = kv.squaredNorm() + kappa2;
                     vec3 nv = { double(nx) , double(ny) , double(nz) };
-		    double nv1 = double( nv.norm() );
-                    if( nv1 > 0 && nv1 <= nmax) {
-                        kvec.push_back(kv);
-                        Ak.push_back( std::exp( -k2 / 4.0 / alpha2 - beta2 ) / k2 );
-                        kvec_size++;
+		    double nv1 = nv.squaredNorm();
+                    if( nv1 > 0) {
+                        if ( nv1 <= nmax*nmax) {
+                            kvec.push_back(kv);
+                            Ak.push_back( std::exp( -k2 / (4.0 * alpha2) - beta2 ) / k2 );
+                        }
                     }
                 }
             }
         }
 
+        assert( kvec.size() == Ak.size() );
+
         double E = 0.0;
-        for(int k = 0; k < kvec_size; k++) {
+        for(size_t k = 0; k < kvec.size(); k++) {
             std::complex<double> Qq(0.0,0.0);
             std::complex<double> Qmu(0.0,0.0);
-            for(unsigned int i = 0; i < positions.size(); i++) {
-                double kDotR = kvec.at(k).dot( positions.at(i) );
-                Qq += charges.at(i) * std::complex<double>( cos(kDotR) , sin(kDotR) );
-                Qmu += dipoles.at(i).dot(kvec.at(k)) * std::complex<double>( -sin(kDotR) , cos(kDotR) );
+            for(size_t i= 0; i < positions.size(); i++) {
+                double kDotR = kvec[k].dot( positions[i] );
+                double coskDotR = std::cos(kDotR);
+                double sinkDotR = std::sin(kDotR);
+                Qq += charges[i] * std::complex<double>( coskDotR, sinkDotR );
+                Qmu += dipoles[i].dot(kvec[k]) * std::complex<double>( -sinkDotR, coskDotR );
             }
             std::complex<double> Q = Qq + Qmu;
-            E += ( pow( std::abs( Q ), 2.0 ) * Ak.at(k) );
+            E += ( powi( std::abs( Q ), 2 ) * Ak[k] );
         }
         return ( E * 2.0 * pi / volume );
     }
@@ -1126,34 +1130,49 @@ struct Ewald : public EnergyImplementation<Ewald> {
      * @param volume Volume of unit-cell
      */
     inline double surface_energy(const std::vector<vec3> &positions, const std::vector<double> &charges,
-                                 const std::vector<vec3> &dipoles, double volume) const override {
+                                 const std::vector<vec3> &dipoles, double volume) const {
         assert(positions.size() == charges.size());
         assert(positions.size() == dipoles.size());
         vec3 sum_r_charges = {0.0,0.0,0.0};
         vec3 sum_dipoles = {0.0,0.0,0.0};
-        for(unsigned int i = 0; i < positions.size(); i++) {
-            sum_r_charges += positions.at(i) * charges.at(i);
-            sum_dipoles += dipoles.at(i);
+        for(size_t i = 0; i < positions.size(); i++) {
+            sum_r_charges += positions[i] * charges[i];
+            sum_dipoles += dipoles[i];
         }
         double sqDipoles = sum_r_charges.dot(sum_r_charges) + 2.0 * sum_r_charges.dot(sum_dipoles) + sum_dipoles.dot(sum_dipoles);
+
         return ( 2.0 * pi / ( 2.0 * eps_sur + 1.0 ) / volume * sqDipoles );
     }
 
     inline vec3 surface_force(const std::vector<vec3> &positions, const std::vector<double> &charges,
-                              const std::vector<vec3> &dipoles, int I, double volume) const override {
+                              const std::vector<vec3> &dipoles, size_t I, double volume) const {
         assert(positions.size() == charges.size());
         assert(positions.size() == dipoles.size());
+        assert(I < charges.size());
 
         vec3 sum_r_charges = {0.0,0.0,0.0};
         vec3 sum_dipoles = {0.0,0.0,0.0};
-        for(unsigned int i = 0; i < positions.size(); i++) {
-            sum_r_charges += positions.at(i) * charges.at(i);
-            sum_dipoles += dipoles.at(i);
+        for(size_t i = 0; i < positions.size(); i++) {
+            sum_r_charges += positions[i] * charges[i];
+            sum_dipoles += dipoles[i];
         }
         //double sqDipoles = 0.0;
-        return ( -4.0*pi/(2.0*eps_sur + 1.0)/volume * charges.at(I) *(sum_r_charges + sum_dipoles) );
+        return ( -4.0*pi/(2.0*eps_sur + 1.0)/volume * charges[I] *(sum_r_charges + sum_dipoles) );
     }
 
+    /**
+     * @brief Compensating term for non-neutral systems
+     * @param charges Charges of particles
+     * @param volume Volume of unit-cell
+     * @note DOI:10.1021/ct400626b
+     */
+    inline double charge_compensation_energy(const std::vector<double> &charges, double volume) const override {
+        double squaredSumQ = 0.0;
+        for(size_t i = 0; i < charges.size(); i++)
+            squaredSumQ += charges[i] * charges[i]; // this should be squared, right?!
+        return ( -pi / (2.0 * alpha2 * volume) * squaredSumQ );
+    }
+  
 #ifdef NLOHMANN_JSON_HPP
     inline Ewald(const nlohmann::json &j)
         : Ewald(j.at("cutoff").get<double>(), j.at("alpha").get<double>(), j.value("epss", infinity),
@@ -1213,6 +1232,7 @@ class ReactionField : public EnergyImplementation<ReactionField> {
     }
 
 #ifdef NLOHMANN_JSON_HPP
+    /** Construct using JSON object looking for the keywords `cutoff`, `epsRF`, `epsr`, and `shifted` */
     inline ReactionField(const nlohmann::json &j) : ReactionField(j.at("cutoff").get<double>(), j.at("epsRF").get<double>(), j.at("epsr").get<double>(), j.at("shifted").get<bool>()) {}
 
   private:
@@ -1236,6 +1256,7 @@ class Zahn : public EnergyImplementation<Zahn> {
 
   public:
     /**
+     * @brief Contructor
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
      */
@@ -1262,6 +1283,7 @@ class Zahn : public EnergyImplementation<Zahn> {
     }
 
 #ifdef NLOHMANN_JSON_HPP
+    /** Construct from JSON object, looking for keywords `cutoff`, `alpha` */
     inline Zahn(const nlohmann::json &j) : Zahn(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
 
   private:
@@ -1311,6 +1333,7 @@ class Fennell : public EnergyImplementation<Fennell> {
     }
 
 #ifdef NLOHMANN_JSON_HPP
+    /** Construct from JSON object, looking for `cutoff`, `alpha` */
     inline Fennell(const nlohmann::json &j) : Fennell(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
 
   private:
@@ -1360,6 +1383,7 @@ class ZeroDipole : public EnergyImplementation<ZeroDipole> {
     }
 
 #ifdef NLOHMANN_JSON_HPP
+    /** Construct from JSON object, looking for `cutoff`, `alpha` */
     inline ZeroDipole(const nlohmann::json &j) : ZeroDipole(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
 
   private:
@@ -1409,6 +1433,7 @@ class Wolf : public EnergyImplementation<Wolf> {
     }
 
 #ifdef NLOHMANN_JSON_HPP
+    /** Construct from JSON object, looking for `cutoff`, `alpha` */
     inline Wolf(const nlohmann::json &j) : Wolf(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
 
   private:
@@ -1491,6 +1516,7 @@ class qPotential : public EnergyImplementation<qPotential> {
     }
 
 #ifdef NLOHMANN_JSON_HPP
+    /** Construct from JSON object, looking for `cutoff`, `order` */
     inline qPotential(const nlohmann::json &j)
         : qPotential(j.at("cutoff").get<double>(), j.at("order").get<double>()) {}
 
@@ -1641,6 +1667,7 @@ class Poisson : public EnergyImplementation<Poisson> {
     };
 
 #ifdef NLOHMANN_JSON_HPP
+    /** Construct from JSON object, looking for keywords `cutoff`, `debyelength` (infinite), and coefficients `C` and `D` */
     inline Poisson(const nlohmann::json &j)
         : Poisson(j.at("cutoff").get<double>(), j.at("C").get<int>(), j.at("D").get<int>(),
                   j.value("debyelength", infinity)) {}
@@ -1685,6 +1712,7 @@ class Fanourgakis : public EnergyImplementation<Fanourgakis> {
         return 525.0 * powi(q, 2) * (q - 0.6) * (q - 1.0);
     };
 #ifdef NLOHMANN_JSON_HPP
+    /** Construct from JSON looking for keyword `cutoff` */
     inline Fanourgakis(const nlohmann::json &j) : Fanourgakis(j.at("cutoff").get<double>()) {}
 
   private:
@@ -1698,8 +1726,12 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
                                              {"qpotential", Scheme::qpotential},
                                              {"wolf", Scheme::wolf},
                                              {"poisson", Scheme::poisson},
+                                             {"reactionfield", Scheme::reactionfield},
                                              {"spline", Scheme::spline},
                                              {"fanourgakis", Scheme::fanourgakis},
+                                             {"fennell", Scheme::fennell},
+                                             {"zahn", Scheme::zahn},
+                                             {"zerodipole", Scheme::zerodipole},
                                              {"ewald", Scheme::ewald}}; // map string keyword to scheme type
 
     std::string name = j.at("type").get<std::string>();
@@ -1739,6 +1771,9 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
     case Scheme::poisson:
         scheme = std::make_shared<Poisson>(j);
         break;
+    case Scheme::reactionfield:
+        scheme = std::make_shared<ReactionField>(j);
+        break;
     default:
         break;
     }
@@ -1750,7 +1785,19 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
 
 /**
  * @brief Dynamic scheme where all short ranged functions are splined
- * @tparam spline If false, no splining if performed
+ *
+ * This potential can hold any other scheme by splining all short-ranged
+ * functions. To set to a particular scheme, call the `spline()` function
+ * and pass the arguments required for the particular scheme.
+ *
+ * Example:
+ *
+ * ~~~{.cpp}
+ *    Splined pot;
+ *    double cutoff = 14;
+ *    int order = 3;
+ *    pot.spline<qPotential>(cutoff, order);
+ * ~~~
  */
 class Splined : public EnergyImplementation<Splined> {
   private:
@@ -1758,7 +1805,7 @@ class Splined : public EnergyImplementation<Splined> {
     Tabulate::Andrea<double> splined_srf;                            // spline class
     std::array<Tabulate::TabulatorBase<double>::data, 4> splinedata; // 0=original, 1=first derivative, ...
 
-    void generate_spline_data() {
+    inline void generate_spline_data() {
         assert(pot);
         SchemeBase::operator=(*pot); // copy base data from pot -> Splined
         splined_srf.setTolerance(1e-3, 1e-1);
@@ -1797,10 +1844,10 @@ class Splined : public EnergyImplementation<Splined> {
     }
 #ifdef NLOHMANN_JSON_HPP
   public:
-    void to_json(nlohmann::json &j) const { pot->to_json(j); }
+    inline void to_json(nlohmann::json &j) const { pot->to_json(j); }
 
   private:
-    void _to_json(nlohmann::json &) const override {}
+    inline void _to_json(nlohmann::json &) const override {}
 #endif
 };
 
