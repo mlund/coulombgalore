@@ -41,20 +41,13 @@ int main() {
     qPotential pot_qpot4(cutoff, 4);
 
     Fanourgakis pot_kis(cutoff);
-    Zahn pot_zahn(cutoff,0.1e10);
     Ewald pot_ewald(cutoff, 0.1e10, infinity);
     
     for (double q=0; q<=1; q+=0.01)
         std::cout << q << " " << pot_qpot3.short_range_function(q)
             << " " << pot_qpot4.short_range_function(q) << " "
             << " " << pot_kis.short_range_function(q) << " "
-            << " " << pot_zahn.short_range_function(q) << " "
             << " " << pot_ewald.short_range_function(q) << "\n";
-	    
-	    
-	    
-	    Zahn pot_zahn2(29.0,0.1);
-	    std::cout << "pot_kis.short_range_function(q): " << pot_zahn2.short_range_function(0.5) << std::endl;
 
 #ifdef NLOHMANN_JSON_HPP
     // this is a truncated potential initiated using JSON

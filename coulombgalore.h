@@ -26,7 +26,7 @@ typedef Eigen::Vector3d vec3; //!< typedef for 3d vector
 constexpr double infinity = std::numeric_limits<double>::infinity(); //!< Numerical infinity
 
 //!< Enum defining all possible schemes
-enum class Scheme { plain, ewald, reactionfield, wolf, poisson, qpotential, fanourgakis, zahn, qpotential5, spline };
+enum class Scheme { plain, ewald, reactionfield, wolf, poisson, qpotential, fanourgakis, zerodipole, zahn, fennell, qpotential5, spline };
 
 /**
  * @brief n'th integer power of float
@@ -487,6 +487,8 @@ template <typename T = double> class Andrea : public TabulatorBase<T> {
  * different schemes. Energy functions are provided as virtual
  * functions which carries runtime overhead. The best performance
  * call these functions directly from the derived class.
+ *
+ * @warning Charge neutralization scheme is not always implemented (or tested) for Yukawa-type potentials.
  */
 class SchemeBase {
   protected:
@@ -500,7 +502,8 @@ class SchemeBase {
     Scheme scheme;       //!< Truncation scheme
     double cutoff;       //!< Cut-off distance
     double debye_length; //!< Debye-length
-    double T0; //!< Spatial Fourier transformed modified interaction tensor, used to calculate the dielectric constant
+    double T0;           //!< Spatial Fourier transformed modified interaction tensor, used to calculate the dielectric constant
+    double chi;          //!< Negative integrated volume potential, used to neutralize charged system
     std::array<double, 2> self_energy_prefactor; //!< Prefactor for self-energies
     inline SchemeBase(Scheme scheme, double cutoff, double debye_length = infinity)
         : scheme(scheme), cutoff(cutoff), debye_length(debye_length) {}
@@ -517,8 +520,6 @@ class SchemeBase {
     virtual vec3 reciprocal_force(std::vector<vec3>, std::vector<double>, std::vector<vec3>, int, vec3, int) const { return {0.0,0.0,0.0}; }
 
     virtual vec3 surface_force(const std::vector<vec3> &, const std::vector<double> &, const std::vector<vec3> &, int, double) const { return {0.0,0.0,0.0}; }
-
-    virtual vec3 charge_compensation_force(std::vector<double>, vec3) const {return {0.0,0.0,0.0}; }
 
     /**
      * @brief Calculate dielectric constant
@@ -958,6 +959,20 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
             e_self += self_energy_prefactor[i] * m2[i] * powi(invcutoff, 2 * i + 1);
         return e_self;
     }
+
+    /**
+     * @brief Compensating term for non-neutral systems
+     * @param charges Charges of particles
+     * @param volume Volume of unit-cell
+     * @note DOI:10.1021/jp951011v
+     */
+    inline double charge_compensation_energy(const std::vector<double> &charges, double volume) const override {
+        double squaredSumQ = 0.0;
+        for(unsigned int i = 0; i < charges.size(); i++)
+            squaredSumQ += charges.at(i);
+        return ( (this)->chi / 2.0 / volume * squaredSumQ );
+    }
+
 };
 
 // -------------- Plain ---------------
@@ -972,6 +987,7 @@ class Plain : public EnergyImplementation<Plain> {
         doi = "Premier mémoire sur l’électricité et le magnétisme by Charles-Augustin de Coulomb"; // :P
         self_energy_prefactor = {0.0, 0.0};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
+        chi = 0.0; // relevante?
     };
     inline double short_range_function(double) const override { return 1.0; };
     inline double short_range_function_derivative(double) const override { return 0.0; }
@@ -989,6 +1005,10 @@ class Plain : public EnergyImplementation<Plain> {
 
 /**
  * @brief Ewald real-space scheme
+ *
+ * @note The implemented charge-compensation for Ewald differes from that of in DOI:10.1021/ct400626b where chi = -pi / alpha2.
+ * This expression is only correct if integration is over all space, not just the unit-cell, cf. Eq. 14 in 10.1021/jp951011v. 
+ * Thus the implemented expression is roughly -pi / alpha2 for alpha > ~2-3. User beware!
  */
 struct Ewald : public EnergyImplementation<Ewald> {
     double alpha, alpha2;                  //!< Damping-parameter
@@ -1015,6 +1035,7 @@ struct Ewald : public EnergyImplementation<Ewald> {
         if (eps_sur < 1.0)
             eps_sur = infinity;
         T0 = (std::isinf(eps_sur)) ? 1.0 : 2.0 * (eps_sur - 1.0) / (2.0 * eps_sur + 1.0);
+        chi = ( 2.0 * alphaRed * exp( -alphaRed2 ) / pi_sqrt + ( -2.0 * alphaRed2 + 1 ) * erfc( alphaRed ) - 1.0 ) * pi / alpha2;
         kappa = 1.0 / debye_length;
         kappa2 = kappa * kappa;
         beta = kappa / (2.0 * alpha);
@@ -1133,19 +1154,6 @@ struct Ewald : public EnergyImplementation<Ewald> {
         return ( -4.0*pi/(2.0*eps_sur + 1.0)/volume * charges.at(I) *(sum_r_charges + sum_dipoles) );
     }
 
-    /**
-     * @brief Compensating term for non-neutral systems
-     * @param charges Charges of particles
-     * @param volume Volume of unit-cell
-     * @note DOI:10.1021/ct400626b
-     */
-    inline double charge_compensation_energy(const std::vector<double> &charges, double volume) const override {
-        double squaredSumQ = 0.0;
-        for(unsigned int i = 0; i < charges.size(); i++)
-            squaredSumQ += charges.at(i);
-        return ( -pi / 2.0 / alpha2 / volume * squaredSumQ );
-    }
-
 #ifdef NLOHMANN_JSON_HPP
     inline Ewald(const nlohmann::json &j)
         : Ewald(j.at("cutoff").get<double>(), j.at("alpha").get<double>(), j.value("epss", infinity),
@@ -1172,6 +1180,7 @@ class ReactionField : public EnergyImplementation<ReactionField> {
     double epsRF;               //!< Relative permittivity of the surrounding medium
     double epsr;                //!< Relative permittivity of the dispersing medium
     bool shifted;               //!< Shifted to zero potential at the cut-off
+    const double pi = 4.0 * std::atan(1.0);
 
   public:
     /**
@@ -1184,9 +1193,10 @@ class ReactionField : public EnergyImplementation<ReactionField> {
         name = "Reaction-field";
         epsRF = epsRF;
         epsr = epsr;
-	shifted = shifted;
+        shifted = shifted;
         self_energy_prefactor = { -3.0 * epsRF * double(shifted) / ( 4.0 * epsRF + 2.0 * epsr ), 0.0};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
+        chi = -6.0 * cutoff * cutoff * pi * ( ( -10.0 * double(shifted) * ( 1.0 / 3.0 ) + 4.0 ) * epsRF + epsr ) / ( ( 5.0 * ( 2.0 * epsRF + epsr ) ) );
     }
 
     inline double short_range_function(double q) const override {
@@ -1222,6 +1232,7 @@ class Zahn : public EnergyImplementation<Zahn> {
     double alpha;               //!< Damping-parameter
     double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
     const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
+    const double pi = 4.0 * std::atan(1.0);
 
   public:
     /**
@@ -1234,11 +1245,12 @@ class Zahn : public EnergyImplementation<Zahn> {
         alphaRed2 = alphaRed * alphaRed;
         self_energy_prefactor = { -alphaRed * ( 1.0 - std::exp(-alphaRed2) ) / pi_sqrt + 0.5 * std::erfc(alphaRed), 0.0};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
+        chi = -( 2.0 * ( alphaRed * ( alphaRed2 - 3.0 ) * std::exp( -alphaRed2 ) - 0.5 * std::sqrt(pi) * ( ( 7.0 - 3.0 / alphaRed2 ) * std::erf( alphaRed ) - 7.0 ) * alphaRed2 ) ) * cutoff * cutoff * std::sqrt(pi) / ( 3.0 * alphaRed2 );
     }
 
     inline double short_range_function(double q) const override {
         return ( std::erfc(alphaRed * q) - ( q - 1.0 ) * q * ( std::erfc( alphaRed ) + 2.0 * alphaRed * std::exp( -alphaRed2 ) / pi_sqrt ) );
-    }//          std::erfc(alphaRed * q) - ( q - 1.0 ) * q * ( std::erfc( alphaRed ) + 2.0 * alphaRed * std::exp( -alphaRed2 ) / pi_sqrt )
+    }
     inline double short_range_function_derivative(double q) const override {
         return ( -( 4.0 * ( 0.5 * std::exp(-alphaRed2*q*q) * alphaRed + ( alphaRed * std::exp(-alphaRed2) + 0.5 * pi_sqrt * std::erfc(alphaRed) ) * ( q - 0.5 ) ) ) / pi_sqrt );
     }
@@ -1259,6 +1271,104 @@ class Zahn : public EnergyImplementation<Zahn> {
 #endif
 };
 
+// -------------- Fennell ---------------
+
+/**
+ * @brief Fennell scheme
+ */
+class Fennell : public EnergyImplementation<Fennell> {
+  private:
+    double alpha;               //!< Damping-parameter
+    double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
+    const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
+    const double pi = 4.0 * std::atan(1.0);
+
+  public:
+    /**
+     * @param cutoff distance cutoff
+     * @param alpha damping-parameter
+     */
+    inline Fennell(double cutoff, double alpha) : EnergyImplementation(Scheme::fennell, cutoff), alpha(alpha) {
+        name = "Fennell";
+        alphaRed = alpha * cutoff;
+        alphaRed2 = alphaRed * alphaRed;
+        self_energy_prefactor = {-alphaRed * ( 1.0 + std::exp( -alphaRed2 ) ) / pi_sqrt - std::erfc( alphaRed ), 0.0};
+        T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
+        chi = ( 2.0 * ( ( alphaRed2 + 3.0 ) * alphaRed * std::exp( -alphaRed2 ) + 0.5 * ( std::erf(alphaRed) * alphaRed2 - alphaRed2 - 3.0 * std::erf(alphaRed) ) * std::sqrt(pi) ) ) * std::sqrt(pi) * cutoff * cutoff / ( 3.0 * alphaRed2 );
+    }
+
+    inline double short_range_function(double q) const override {
+        return ( std::erfc(alphaRed * q) - q * std::erfc(alphaRed) + ( q - 1.0 ) * q * ( std::erfc( alphaRed ) + 2.0 * alphaRed * std::exp( -alphaRed2 ) / pi_sqrt ) );
+    }
+    inline double short_range_function_derivative(double q) const override {
+	return ( 2.0 * alphaRed * ( 2.0 * ( q - 0.5 ) * std::exp( -alphaRed2 ) - std::exp( -alphaRed2 * q * q ) ) / pi_sqrt + 2.0 * std::erfc( alphaRed ) * ( q - 1.0 ) );
+    }
+    inline double short_range_function_second_derivative(double q) const override {
+        return ( 4.0 * alphaRed * ( alphaRed2 * q * std::exp( -alphaRed2 * q * q ) + std::exp( -alphaRed2 ) ) / pi_sqrt + 2.0 * std::erfc( alphaRed ) );
+    }
+    inline double short_range_function_third_derivative(double q) const override {
+        return 4.0 * alphaRed2 * alphaRed * ( 1.0 - 2.0 * alphaRed2 * q * q  ) * std::exp( -alphaRed2 * q * q ) / pi_sqrt;
+    }
+
+#ifdef NLOHMANN_JSON_HPP
+    inline Fennell(const nlohmann::json &j) : Fennell(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
+
+  private:
+    inline void _to_json(nlohmann::json &j) const override {
+        j = {{ "alpha", alpha }};
+    }
+#endif
+};
+
+// -------------- Zero-dipole ---------------
+
+/**
+ * @brief Zero-dipole scheme
+ */
+class ZeroDipole : public EnergyImplementation<ZeroDipole> {
+  private:
+    double alpha;               //!< Damping-parameter
+    double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
+    const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
+    const double pi = 4.0 * std::atan(1.0);
+
+  public:
+    /**
+     * @param cutoff distance cutoff
+     * @param alpha damping-parameter
+     */
+    inline ZeroDipole(double cutoff, double alpha) : EnergyImplementation(Scheme::zerodipole, cutoff), alpha(alpha) {
+        name = "ZeroDipole";
+        alphaRed = alpha * cutoff;
+        alphaRed2 = alphaRed * alphaRed;
+        self_energy_prefactor = {-alphaRed * ( 1.0 + 0.5 * std::exp( -alphaRed2 ) ) / pi_sqrt - 0.75 * std::erfc( alphaRed ), 0.0};
+        T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
+        chi = cutoff * cutoff * ( ( 6.0 * alphaRed2 - 15.0 ) * std::erf(alphaRed) * pi - 6.0 * pi * alphaRed2 + ( 8.0 * alphaRed2 + 30.0 ) * alphaRed * std::exp(-alphaRed2) * std::sqrt(pi) ) / ( 15.0 * alphaRed2 );
+    }
+
+    inline double short_range_function(double q) const override {
+        return ( std::erfc(alphaRed * q) - q * std::erfc(alphaRed) + 0.5 * ( q * q - 1.0 ) * q * ( std::erfc( alphaRed ) + 2.0 * alphaRed * std::exp( -alphaRed2 ) / pi_sqrt ) );
+    }
+    inline double short_range_function_derivative(double q) const override {
+	return ( alphaRed * ( ( 3.0 * q * q - 1.0 ) * std::exp( -alphaRed2 ) - 2.0 * std::exp( -alphaRed2 * q * q ) ) / pi_sqrt + 1.5 * std::erfc( alphaRed ) * ( q * q - 1.0 ) );
+    }
+    inline double short_range_function_second_derivative(double q) const override {
+        return ( 2.0 * alphaRed * q * ( 2.0 * alphaRed2 * std::exp( -alphaRed2 * q * q ) + 3.0 * std::exp( -alphaRed2 ) ) / pi_sqrt + 3.0 * q * std::erfc( alphaRed ) );
+    }
+    inline double short_range_function_third_derivative(double q) const override {
+        return ( 2.0 * alphaRed * ( 2.0 * alphaRed2 * ( 1.0 - 2.0 * alphaRed2 * q * q  ) * std::exp( -alphaRed2 * q * q ) + 3.0 * std::exp( -alphaRed2 ) ) / pi_sqrt + 3.0 * std::erfc( alphaRed ) );
+    }
+
+#ifdef NLOHMANN_JSON_HPP
+    inline ZeroDipole(const nlohmann::json &j) : ZeroDipole(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
+
+  private:
+    inline void _to_json(nlohmann::json &j) const override {
+        j = {{ "alpha", alpha }};
+    }
+#endif
+};
+
 // -------------- Wolf ---------------
 
 /**
@@ -1269,6 +1379,7 @@ class Wolf : public EnergyImplementation<Wolf> {
     double alpha;               //!< Damping-parameter
     double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
     const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
+    const double pi = 4.0 * std::atan(1.0);
 
   public:
     /**
@@ -1281,6 +1392,7 @@ class Wolf : public EnergyImplementation<Wolf> {
         alphaRed2 = alphaRed * alphaRed;
         self_energy_prefactor = {-alphaRed / pi_sqrt - std::erfc(alphaRed)/2.0, -powi(alphaRed, 3) * 2.0 / 3.0 / pi_sqrt};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
+        chi = 2.0 * std::sqrt(pi) * cutoff * cutoff * ( 3.0 * std::exp(-alphaRed2) * alphaRed - std::sqrt(pi) * ( std::erfc(alphaRed) * alphaRed2 + 3.0 * std::erf(alphaRed) * 0.5 ) ) / ( 3.0 * alphaRed2 );
     }
 
     inline double short_range_function(double q) const override {
@@ -1313,6 +1425,7 @@ template <int order> class qPotentialFixedOrder : public EnergyImplementation<qP
     using base::name;
     using base::self_energy_prefactor;
     using base::T0;
+    using base::chi;
     /**
      * @param cutoff distance cutoff
      * @param order number of moments to cancel
@@ -1322,6 +1435,7 @@ template <int order> class qPotentialFixedOrder : public EnergyImplementation<qP
         this->doi = "10/c5fr";
         self_energy_prefactor = {-0.5, -0.5};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
+        chi = -86459.0 * std::acos(-1.0) * cutoff * cutoff / 235620.0;
     }
 
     inline double short_range_function(double q) const override { return qPochhammerSymbol(q, 0, order); }
@@ -1362,6 +1476,7 @@ class qPotential : public EnergyImplementation<qPotential> {
         doi = "10/c5fr";
         self_energy_prefactor = {-0.5, -0.5};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
+        chi = 0.0; // -Pi*Rc^2 * [  2/3   7/15  17/42 146/385  86459/235620 ]
     }
 
     inline double short_range_function(double q) const override { return qPochhammerSymbol(q, 0, order); }
@@ -1446,6 +1561,7 @@ class Poisson : public EnergyImplementation<Poisson> {
         self_energy_prefactor = {0.5*a1, 0.0};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) +
              short_range_function(0.0); // Is this OK for Yukawa-interactions?
+        chi = -2.0 * std::acos(-1.0) * cutoff * cutoff * ( 1.0 + double(C) ) * ( 2.0 + double(C) ) / ( 3.0 * double(D + 1 + C) * double( D + 2 + C ) ); // not confirmed, but have worked for all tested values of 'C' and 'D'
     }
 
     inline double short_range_function(double q) const override {
@@ -1552,6 +1668,7 @@ class Fanourgakis : public EnergyImplementation<Fanourgakis> {
         doi = "10.1063/1.3216520";
         self_energy_prefactor = {-0.875, 0.0};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
+        chi = -5.0 * std::acos(-1.0) * cutoff * cutoff / 18.0;
     }
 
     inline double short_range_function(double q) const override {
@@ -1600,6 +1717,12 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
         break;
     case Scheme::zahn:
         scheme = std::make_shared<Zahn>(j);
+        break;
+    case Scheme::fennell:
+        scheme = std::make_shared<Fennell>(j);
+        break;
+    case Scheme::zerodipole:
+        scheme = std::make_shared<ZeroDipole>(j);
         break;
     case Scheme::fanourgakis:
         scheme = std::make_shared<Fanourgakis>(j);
