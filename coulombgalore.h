@@ -1256,6 +1256,7 @@ class Zahn : public EnergyImplementation<Zahn> {
 
   public:
     /**
+     * @brief Contructor
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
      */
@@ -1282,6 +1283,7 @@ class Zahn : public EnergyImplementation<Zahn> {
     }
 
 #ifdef NLOHMANN_JSON_HPP
+    /** Construct from JSON object, looking for keywords `cutoff`, `alpha` */
     inline Zahn(const nlohmann::json &j) : Zahn(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
 
   private:
@@ -1331,6 +1333,7 @@ class Fennell : public EnergyImplementation<Fennell> {
     }
 
 #ifdef NLOHMANN_JSON_HPP
+    /** Construct from JSON object, looking for `cutoff`, `alpha` */
     inline Fennell(const nlohmann::json &j) : Fennell(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
 
   private:
@@ -1380,6 +1383,7 @@ class ZeroDipole : public EnergyImplementation<ZeroDipole> {
     }
 
 #ifdef NLOHMANN_JSON_HPP
+    /** Construct from JSON object, looking for `cutoff`, `alpha` */
     inline ZeroDipole(const nlohmann::json &j) : ZeroDipole(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
 
   private:
@@ -1429,6 +1433,7 @@ class Wolf : public EnergyImplementation<Wolf> {
     }
 
 #ifdef NLOHMANN_JSON_HPP
+    /** Construct from JSON object, looking for `cutoff`, `alpha` */
     inline Wolf(const nlohmann::json &j) : Wolf(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
 
   private:
@@ -1511,6 +1516,7 @@ class qPotential : public EnergyImplementation<qPotential> {
     }
 
 #ifdef NLOHMANN_JSON_HPP
+    /** Construct from JSON object, looking for `cutoff`, `order` */
     inline qPotential(const nlohmann::json &j)
         : qPotential(j.at("cutoff").get<double>(), j.at("order").get<double>()) {}
 
@@ -1661,6 +1667,7 @@ class Poisson : public EnergyImplementation<Poisson> {
     };
 
 #ifdef NLOHMANN_JSON_HPP
+    /** Construct from JSON object, looking for keywords `cutoff`, `debyelength` (infinite), and coefficients `C` and `D` */
     inline Poisson(const nlohmann::json &j)
         : Poisson(j.at("cutoff").get<double>(), j.at("C").get<int>(), j.at("D").get<int>(),
                   j.value("debyelength", infinity)) {}
@@ -1705,6 +1712,7 @@ class Fanourgakis : public EnergyImplementation<Fanourgakis> {
         return 525.0 * powi(q, 2) * (q - 0.6) * (q - 1.0);
     };
 #ifdef NLOHMANN_JSON_HPP
+    /** Construct from JSON looking for keyword `cutoff` */
     inline Fanourgakis(const nlohmann::json &j) : Fanourgakis(j.at("cutoff").get<double>()) {}
 
   private:
@@ -1721,6 +1729,9 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
                                              {"reactionfield", Scheme::reactionfield},
                                              {"spline", Scheme::spline},
                                              {"fanourgakis", Scheme::fanourgakis},
+                                             {"fennell", Scheme::fennell},
+                                             {"zahn", Scheme::zahn},
+                                             {"zerodipole", Scheme::zerodipole},
                                              {"ewald", Scheme::ewald}}; // map string keyword to scheme type
 
     std::string name = j.at("type").get<std::string>();
