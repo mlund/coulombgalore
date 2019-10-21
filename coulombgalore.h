@@ -507,16 +507,11 @@ class SchemeBase {
 
     virtual ~SchemeBase() = default;
 
-    virtual double reciprocal_energy(const std::vector<vec3> &, const std::vector<double> &, const std::vector<vec3> &,
-                                     const vec3 &, int) const { return 0.0; }
-
-    virtual double surface_energy(const std::vector<vec3> &, const std::vector<double> &, const std::vector<vec3> &, double) const { return 0.0; }
+    //virtual double surface_energy(const std::vector<vec3> &, const std::vector<double> &, const std::vector<vec3> &, double) const { return 0.0; }
 
     virtual double charge_compensation_energy(const std::vector<double> &, double) const {return 0.0; }
 
-    virtual vec3 reciprocal_force(std::vector<vec3>, std::vector<double>, std::vector<vec3>, int, vec3, int) const { return {0.0,0.0,0.0}; }
-
-    virtual vec3 surface_force(const std::vector<vec3> &, const std::vector<double> &, const std::vector<vec3> &, int, double) const { return {0.0,0.0,0.0}; }
+    //virtual vec3 surface_force(const std::vector<vec3> &, const std::vector<double> &, const std::vector<vec3> &, int, double) const { return {0.0,0.0,0.0}; }
 
     virtual vec3 charge_compensation_force(std::vector<double>, vec3) const {return {0.0,0.0,0.0}; }
 
@@ -990,7 +985,7 @@ class Plain : public EnergyImplementation<Plain> {
 /**
  * @brief Ewald real-space scheme
  */
-struct Ewald : public EnergyImplementation<Ewald> {
+class Ewald : public EnergyImplementation<Ewald> {
     double alpha, alpha2;                  //!< Damping-parameter
     double alphaRed, alphaRed2, alphaRed3; //!< Reduced damping-parameter, and squared
     double eps_sur;                        //!< Dielectric constant of the surrounding medium
@@ -1059,40 +1054,48 @@ struct Ewald : public EnergyImplementation<Ewald> {
      * @note Uses spherical cut-off in summation
      */
     inline double reciprocal_energy(const std::vector<vec3> &positions, const std::vector<double> &charges,
-                                    const std::vector<vec3> &dipoles, const vec3 &L, int nmax) const override {
+                                    const std::vector<vec3> &dipoles, const vec3 &L, int nmax) const {
+
         assert(positions.size() == charges.size());
         assert(positions.size() == dipoles.size());
+
         double volume = L[0]*L[1]*L[2];
         std::vector<vec3> kvec;
         std::vector<double> Ak;
-        int kvec_size = 0;
+        //kvec.reserve( expected_size_of_kvec ); // speeds up push_back below
+        //Ak.reserve( expected_size_of_Ak ); // speeds up push_back below
         for(int nx = -nmax; nx < nmax+1; nx++) {
             for(int ny = -nmax; ny < nmax+1; ny++) {
                 for(int nz = -nmax; nz < nmax+1; nz++) {
                     vec3 kv = { 2.0 * pi * nx / L[0] , 2.0 * pi * ny / L[1] , 2.0 * pi * nz / L[2] };
-                    double k2 = double( kv.squaredNorm() ) + kappa2;
+                    double k2 = kv.squaredNorm() + kappa2;
                     vec3 nv = { double(nx) , double(ny) , double(nz) };
-		    double nv1 = double( nv.norm() );
-                    if( nv1 > 0 && nv1 <= nmax) {
-                        kvec.push_back(kv);
-                        Ak.push_back( std::exp( -k2 / 4.0 / alpha2 - beta2 ) / k2 );
-                        kvec_size++;
+		    double nv1 = nv.squaredNorm();
+                    if( nv1 > 0) {
+                        if ( nv1 <= nmax*nmax) {
+                            kvec.push_back(kv);
+                            Ak.push_back( std::exp( -k2 / (4.0 * alpha2) - beta2 ) / k2 );
+                        }
                     }
                 }
             }
         }
 
+        assert( kvec.size() == Ak.size() );
+
         double E = 0.0;
-        for(int k = 0; k < kvec_size; k++) {
+        for(size_t k = 0; k < kvec.size(); k++) {
             std::complex<double> Qq(0.0,0.0);
             std::complex<double> Qmu(0.0,0.0);
-            for(unsigned int i = 0; i < positions.size(); i++) {
-                double kDotR = kvec.at(k).dot( positions.at(i) );
-                Qq += charges.at(i) * std::complex<double>( cos(kDotR) , sin(kDotR) );
-                Qmu += dipoles.at(i).dot(kvec.at(k)) * std::complex<double>( -sin(kDotR) , cos(kDotR) );
+            for(size_t i= 0; i < positions.size(); i++) {
+                double kDotR = kvec[k].dot( positions[i] );
+                double coskDotR = std::cos(kDotR);
+                double sinkDotR = std::sin(kDotR);
+                Qq += charges[i] * std::complex<double>( coskDotR, sinkDotR );
+                Qmu += dipoles[i].dot(kvec[k]) * std::complex<double>( -sinkDotR, coskDotR );
             }
             std::complex<double> Q = Qq + Qmu;
-            E += ( pow( std::abs( Q ), 2.0 ) * Ak.at(k) );
+            E += ( powi( std::abs( Q ), 2 ) * Ak[k] );
         }
         return ( E * 2.0 * pi / volume );
     }
@@ -1105,32 +1108,34 @@ struct Ewald : public EnergyImplementation<Ewald> {
      * @param volume Volume of unit-cell
      */
     inline double surface_energy(const std::vector<vec3> &positions, const std::vector<double> &charges,
-                                 const std::vector<vec3> &dipoles, double volume) const override {
+                                 const std::vector<vec3> &dipoles, double volume) const {
         assert(positions.size() == charges.size());
         assert(positions.size() == dipoles.size());
         vec3 sum_r_charges = {0.0,0.0,0.0};
         vec3 sum_dipoles = {0.0,0.0,0.0};
-        for(unsigned int i = 0; i < positions.size(); i++) {
-            sum_r_charges += positions.at(i) * charges.at(i);
-            sum_dipoles += dipoles.at(i);
+        for(size_t i = 0; i < positions.size(); i++) {
+            sum_r_charges += positions[i] * charges[i];
+            sum_dipoles += dipoles[i];
         }
         double sqDipoles = sum_r_charges.dot(sum_r_charges) + 2.0 * sum_r_charges.dot(sum_dipoles) + sum_dipoles.dot(sum_dipoles);
+
         return ( 2.0 * pi / ( 2.0 * eps_sur + 1.0 ) / volume * sqDipoles );
     }
 
     inline vec3 surface_force(const std::vector<vec3> &positions, const std::vector<double> &charges,
-                              const std::vector<vec3> &dipoles, int I, double volume) const override {
+                              const std::vector<vec3> &dipoles, size_t I, double volume) const {
         assert(positions.size() == charges.size());
         assert(positions.size() == dipoles.size());
+        assert(I < charges.size());
 
         vec3 sum_r_charges = {0.0,0.0,0.0};
         vec3 sum_dipoles = {0.0,0.0,0.0};
-        for(unsigned int i = 0; i < positions.size(); i++) {
-            sum_r_charges += positions.at(i) * charges.at(i);
-            sum_dipoles += dipoles.at(i);
+        for(size_t i = 0; i < positions.size(); i++) {
+            sum_r_charges += positions[i] * charges[i];
+            sum_dipoles += dipoles[i];
         }
         //double sqDipoles = 0.0;
-        return ( -4.0*pi/(2.0*eps_sur + 1.0)/volume * charges.at(I) *(sum_r_charges + sum_dipoles) );
+        return ( -4.0*pi/(2.0*eps_sur + 1.0)/volume * charges[I] *(sum_r_charges + sum_dipoles) );
     }
 
     /**
@@ -1141,9 +1146,9 @@ struct Ewald : public EnergyImplementation<Ewald> {
      */
     inline double charge_compensation_energy(const std::vector<double> &charges, double volume) const override {
         double squaredSumQ = 0.0;
-        for(unsigned int i = 0; i < charges.size(); i++)
-            squaredSumQ += charges.at(i);
-        return ( -pi / 2.0 / alpha2 / volume * squaredSumQ );
+        for(size_t i = 0; i < charges.size(); i++)
+            squaredSumQ += charges[i] * charges[i]; // this should be squared, right?!
+        return ( -pi / (2.0 * alpha2 * volume) * squaredSumQ );
     }
 
 #ifdef NLOHMANN_JSON_HPP
@@ -1534,6 +1539,7 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
                                              {"qpotential", Scheme::qpotential},
                                              {"wolf", Scheme::wolf},
                                              {"poisson", Scheme::poisson},
+                                             {"reactionfield", Scheme::reactionfield},
                                              {"spline", Scheme::spline},
                                              {"fanourgakis", Scheme::fanourgakis},
                                              {"ewald", Scheme::ewald}}; // map string keyword to scheme type
@@ -1565,6 +1571,9 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
         break;
     case Scheme::poisson:
         scheme = std::make_shared<Poisson>(j);
+        break;
+    case Scheme::reactionfield:
+        scheme = std::make_shared<ReactionField>(j);
         break;
     default:
         break;
