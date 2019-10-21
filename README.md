@@ -1,3 +1,5 @@
+[![Documentation](https://codedocs.xyz/mlund/coulombgalore.svg)](https://codedocs.xyz/mlund/coulombgalore/)
+
 # Coulomb Galore
 
 This is a C++ library for calculating the potential, field, forces, and interactions from and between electric multipoles.
