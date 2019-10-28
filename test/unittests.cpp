@@ -326,7 +326,7 @@ TEST_CASE("[CoulombGalore] ZeroDipole") {
     ZeroDipole pot(cutoff, alpha);
 
     CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.2257052059));
-    CHECK(pot.self_energy({0.0, 2.0}) == Approx(0.0));
+    CHECK(pot.self_energy({0.0, 2.0}) == Approx(-0.0007522843336));
 
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(0.04014012381));
@@ -346,7 +346,7 @@ TEST_CASE("[CoulombGalore] Reaction-field") {
     ReactionField pot(cutoff, epsRF, epsr, shifted);
 
     CHECK(pot.self_energy({4.0, 0.0}) == Approx(0.0));
-    CHECK(pot.self_energy({0.0, 2.0}) == Approx(0.0));
+    CHECK(pot.self_energy({0.0, 2.0}) == Approx(-0.00004023807698));
 
     // Test short-ranged function
     CHECK(pot.short_range_function(0.5) == Approx(1.061335404));
@@ -360,7 +360,7 @@ TEST_CASE("[CoulombGalore] Reaction-field") {
     ReactionField potS(cutoff, epsRF, epsr, shifted);
 
     CHECK(potS.self_energy({4.0, 0.0}) == Approx(-0.1028057400));
-    CHECK(potS.self_energy({0.0, 2.0}) == Approx(0.0));
+    CHECK(potS.self_energy({0.0, 2.0}) == Approx(-0.00004023807698));
 
     // Test short-ranged function
     CHECK(potS.short_range_function(0.5) == Approx(0.3159937888));
@@ -539,10 +539,10 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(F_dipoledipole[1] == Approx(-0.002797126801));
     CHECK(F_dipoledipole[2] == Approx(-0.001608010094));
 
-    //vec3 F_multipolemultipole = pot43.multipole_multipole_force(zA, zB, muA, muB, r);
-    //CHECK(F_multipolemultipole[0] == Approx(0.022837973641));
-    //CHECK(F_multipolemultipole[1] == Approx(-0.003520837008));
-    //CHECK(F_multipolemultipole[2] == Approx(-0.0021738198922));
+    vec3 F_multipolemultipole = pot43.multipole_multipole_force(zA, zB, muA, muB, r);
+    CHECK(F_multipolemultipole[0] == Approx(0.022837973641));
+    CHECK(F_multipolemultipole[1] == Approx(-0.003520837008));
+    CHECK(F_multipolemultipole[2] == Approx(-0.0021738198922));
 
     // Test Yukawa-interactions
     C = 3;         // number of cancelled derivatives at origin -2 (starting from second derivative)
@@ -577,20 +577,46 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(E_dipole_Y[1] == Approx(-0.0002585497523));
     CHECK(E_dipole_Y[2] == Approx(-0.0004062924688));
 
+    // Test energies
+    CHECK(potY.ion_ion_energy(zA, zB, cutoff) == Approx(0.0));
+    CHECK(potY.ion_ion_energy(zA, zB, r.norm()) == Approx(0.01003265793));
+    CHECK(potY.ion_dipole_energy(zA, muB, cutoff * rh) == Approx(0.0));
+    CHECK(potY.ion_dipole_energy(zA, muB, r) == Approx(-0.02208753604));
+    CHECK(potY.ion_dipole_energy(zB, muA, -r) == Approx(0.04842267505));
+    CHECK(potY.dipole_dipole_energy(muA, muB, cutoff * rh) == Approx(0.0));
+    CHECK(potY.dipole_dipole_energy(muA, muB, r) == Approx(-0.05800464321));
+    CHECK(potY.multipole_multipole_energy(zA, zB, muA, muB, r) == Approx(-0.02163684627));
+
     // Test forces
+    CHECK(potY.ion_ion_force(zA, zB, cutoff * rh).norm() == Approx(0.0));
+    vec3 F_ionion_Y = potY.ion_ion_force(zA, zB, r);
+    CHECK(F_ionion_Y[0] == Approx(0.005097123689));
+    CHECK(F_ionion_Y.norm() == Approx(0.005097123689));
+    CHECK(potY.ion_dipole_force(zB, muA, cutoff * rh).norm() == Approx(0.0));
+    vec3 F_iondipoleBA_Y = potY.ion_dipole_force(zB, muA, r);
+    CHECK(F_iondipoleBA_Y[0] == Approx(0.01486879646));
+    CHECK(F_iondipoleBA_Y[1] == Approx(-0.0007756492577));
+    CHECK(F_iondipoleBA_Y[2] == Approx(-0.001218877402));
+
+    vec3 F_iondipoleAB_Y = potY.ion_dipole_force(zA, muB, -r);
+    CHECK(F_iondipoleAB_Y[0] == Approx(0.006782258035));
+    CHECK(F_iondipoleAB_Y[1] == Approx(-0.001255813082));
+    CHECK(F_iondipoleAB_Y[2] == Approx(-0.0003693567885));
+
     CHECK(potY.dipole_dipole_force(muA, muB, cutoff * rh).norm() == Approx(0.0));
     vec3 F_dipoledipole_Y = potY.dipole_dipole_force(muA, muB, r);
-    CHECK(F_dipoledipole_Y[0] == Approx(0.002987655338));
-    CHECK(F_dipoledipole_Y[1] == Approx(-0.005360251621));
-    CHECK(F_dipoledipole_Y[2] == Approx(-0.003081497308));
+    CHECK(F_dipoledipole_Y[0] == Approx(0.002987655323));
+    CHECK(F_dipoledipole_Y[1] == Approx(-0.005360251624));
+    CHECK(F_dipoledipole_Y[2] == Approx(-0.003081497314));
 
-    //vec3 F_multipolemultipole_Y = potY.multipole_multipole_force(zA, zB, muA, muB, r);
-    //CHECK(F_multipolemultipole_Y[0] == Approx(0.003465746010400)); // 0.0034657460104
-    //CHECK(F_multipolemultipole_Y[1] == Approx(-0.005360251621)); //
-    //CHECK(F_multipolemultipole_Y[2] == Approx(-0.003081497308)); //
+    vec3 F_multipolemultipole_Y = potY.multipole_multipole_force(zA, zB, muA, muB, r);
+    CHECK(F_multipolemultipole_Y[0] == Approx(0.029735833507));
+    CHECK(F_multipolemultipole_Y[1] == Approx(-0.0073917139637));
+    CHECK(F_multipolemultipole_Y[2] == Approx(-0.0046697315045));
 
-    // CHECK(Poisson(cutoff, 1, -1).short_range_function(0.5) == Approx(Plain().short_range_function(0.5) ));
+    //CHECK(Poisson(cutoff, 1, -1).short_range_function(0.5) == Approx(Plain().short_range_function(0.5) ));
 }
+
 TEST_CASE("[CoulombGalore] createScheme") {
     using doctest::Approx;
     double cutoff = 29.0;   // cutoff distance
@@ -643,8 +669,7 @@ TEST_CASE("[CoulombGalore] Splined") {
         int D = 3;              // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
         double zA = 2.0;        // charge
         vec3 muA = {19, 7, 11}; // dipole moment
-        //vec3 muB = {13, 17, 5}; // dipole moment
-        vec3 r = {cutoff, 0, 0}; // distance vector
+        vec3 r = {0.5*cutoff, 0, 0}; // distance vector
         vec3 rh = {1, 0, 0};            // normalized distance vector
 
         pot.spline<Poisson>(cutoff, C, D);
@@ -659,11 +684,11 @@ TEST_CASE("[CoulombGalore] Splined") {
 
         // Test potentials
         CHECK(pot.ion_potential(zA, cutoff) == Approx(0.0).epsilon(tol));
-        CHECK(pot.ion_potential(zA, r.norm()) == Approx(0.0009430652121).epsilon(tol));
+        CHECK(pot.ion_potential(zA, r.norm()) == Approx(0.02747844828).epsilon(tol));
 
-        CHECK((cutoff*rh).norm() == Approx(r.norm()).epsilon(tol));
+        CHECK((cutoff*rh).norm() == Approx(r.norm()*2.0).epsilon(tol));
         CHECK(pot.dipole_potential(muA, cutoff * rh) == Approx(0.0).epsilon(tol));
-        //CHECK(pot.dipole_potential(muA, r) == Approx(0.005750206554).epsilon(tol));
+        CHECK(pot.dipole_potential(muA, r) == Approx(0.06989447087).epsilon(tol));
     }
 
     SUBCASE("Ewald") {

@@ -912,8 +912,8 @@ template <class T, bool debyehuckel=true> class EnergyImplementation : public Sc
             vec3 ion_ion = zB * zA * r * (srf * (1.0 + kr) - dsrfq);
 	    //vec3 ion_ion = zB * zA * r * tmp0;
 	    
-            vec3 ion_dipoleA = zA * ( (3.0 * muBdotRh * rh - muB) * tmp2 + muB * tmp1)*0.0;
-            vec3 ion_dipoleB = zB * ( (3.0 * muAdotRh * rh - muA) * tmp2 + muA * tmp1)*0.0;
+            vec3 ion_dipoleA = zA * ( (3.0 * muBdotRh * rh - muB) * tmp2 + muB * tmp1);
+            vec3 ion_dipoleB = zB * ( (3.0 * muAdotRh * rh - muA) * tmp2 + muA * tmp1);
 
             vec3 forceD = 3.0 * ((5.0 * muAdotRh * muBdotRh - muA.dot(muB)) * rh - muBdotRh * muA - muAdotRh * muB) * tmp2 / r1;
             vec3 dipole_dipole = ( forceD +  muAdotRh * muBdotRh * rh * tmp3 );
