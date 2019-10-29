@@ -662,6 +662,7 @@ TEST_CASE("[CoulombGalore] Splined") {
         CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.36159125).epsilon(tol));
         CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991).epsilon(tol));
         CHECK(pot.short_range_function(1.0) == Approx(0.0).epsilon(tol));
+        CHECK(pot.self_energy({4.0, 0.0}) == Approx( Wolf(alpha, cutoff).self_energy({4.0, 0.0}) ) );
     }
 
     SUBCASE("Poisson") {

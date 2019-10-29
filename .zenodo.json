@@ -1,0 +1,24 @@
+{
+    "creators": [
+        {
+            "name": "Björn Stenqvist",
+            "affiliation": "Division of Physical Chemistry, Department of Chemistry, Lund University, Sweden",
+            "orcid": "0000-0002-9099-0663"
+        },
+        {
+            "name": "Mikael Lund",
+            "affiliation": "Division of Theoretical Chemistry, Department of Chemistry, Lund University, Sweden",
+            "orcid": "0000-0001-8178-8175"
+        }
+    ],
+    "keywords": [
+        "electrostatics",
+        "molecular dynamics",
+        "monte carlo",
+        "intermolecular interactions",
+        "multipoles",
+        "electric field"
+    ],
+    "license": "mit-license",
+    "upload_type": "software"
+}
