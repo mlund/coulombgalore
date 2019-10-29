@@ -50,13 +50,13 @@ Class name      | Link
 --------------- | ----------------------------------- 
 `Ewald`         | http://doi.org/dgpdmc
 `Fanourgakis`   | http://doi.org/f639q5
-`Fennell`       | http://
+`Fennell`       | http://doi.org/10.1063/1.2206581
 `Plain`         | http://doi.org/ctnnsj
 `Poisson`       | http://doi.org/10/c5fr
 `qPotential`    | https://arxiv.org/abs/1904.10335
 `ReactionField` | http://doi.org/dbs99w
 `Wolf`          | http://doi.org/cfcxdk
 `Zahn`          | http://doi.org/10.1021/jp025949h
-`ZeroDipole`    | http://
+`ZeroDipole`    | http://doi.org/10.1063/1.3582791
 `Splined`       | Splined version of any of the above
 
