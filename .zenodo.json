@@ -1,4 +1,5 @@
 {
+    "title": "CoulombGalore - A Library for Electrostatic Interactions", 
     "creators": [
         {
             "name": "Björn Stenqvist",
@@ -14,7 +15,7 @@
     "keywords": [
         "electrostatics",
         "molecular dynamics",
-        "monte carlo",
+        "monte carlo simulation",
         "intermolecular interactions",
         "multipoles",
         "electric field"
