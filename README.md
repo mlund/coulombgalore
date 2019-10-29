@@ -56,7 +56,7 @@ Class name      | Link
 `qPotential`    | https://arxiv.org/abs/1904.10335
 `ReactionField` | http://doi.org/dbs99w
 `Wolf`          | http://doi.org/cfcxdk
-`Zahn`          | http://
+`Zahn`          | http://doi.org/10.1021/jp025949h
 `ZeroDipole`    | http://
 `Splined`       | Splined version of any of the above
 

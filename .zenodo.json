@@ -21,6 +21,13 @@
         "multipoles",
         "electric field"
     ],
+    "related_identifiers": [
+        {
+            "identifier": "10.1039/c9cp03875b",
+            "relation": "isSupplementTo",
+            "scheme": "doi"
+        }
+    ],
     "license": "mit-license",
     "upload_type": "software"
 }
