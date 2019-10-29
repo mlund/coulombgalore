@@ -368,7 +368,7 @@ TEST_CASE("[CoulombGalore] Reaction-field") {
     CHECK(potS.short_range_function_second_derivative(0.5) == Approx(1.472049689));
     CHECK(potS.short_range_function_third_derivative(0.5) == Approx(2.944099379));
     CHECK(potS.short_range_function(1.0) == Approx(0.0));
-    //testDerivatives(potS, 0.5); // Compare differentiation with numerical diff.
+    // testDerivatives(potS, 0.5); // Compare differentiation with numerical diff.
 }
 
 TEST_CASE("[CoulombGalore] qPotential") {
@@ -614,7 +614,7 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(F_multipolemultipole_Y[1] == Approx(-0.0073917139637));
     CHECK(F_multipolemultipole_Y[2] == Approx(-0.0046697315045));
 
-    //CHECK(Poisson(cutoff, 1, -1).short_range_function(0.5) == Approx(Plain().short_range_function(0.5) ));
+    // CHECK(Poisson(cutoff, 1, -1).short_range_function(0.5) == Approx(Plain().short_range_function(0.5) ));
 }
 
 TEST_CASE("[CoulombGalore] createScheme") {
@@ -622,9 +622,9 @@ TEST_CASE("[CoulombGalore] createScheme") {
     double cutoff = 29.0;   // cutoff distance
     double zA = 2.0;        // charge
     vec3 muA = {19, 7, 11}; // dipole moment
-    //vec3 muB = {13, 17, 5}; // dipole moment
-    vec3 r = {23, 0, 0};    // distance vector
-    vec3 rh = {1, 0, 0};    // normalized distance vector
+    // vec3 muB = {13, 17, 5}; // dipole moment
+    vec3 r = {23, 0, 0}; // distance vector
+    vec3 rh = {1, 0, 0}; // normalized distance vector
 
 #ifdef NLOHMANN_JSON_HPP
     // create scheme dynamically through a json object
@@ -650,7 +650,7 @@ TEST_CASE("[CoulombGalore] createScheme") {
 
 TEST_CASE("[CoulombGalore] Splined") {
     using doctest::Approx;
-    double tol = 0.001;    // tolerance
+    double tol = 0.001;   // tolerance
     double cutoff = 29.0; // cutoff distance
     Splined pot;
 
@@ -662,7 +662,7 @@ TEST_CASE("[CoulombGalore] Splined") {
         CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.36159125).epsilon(tol));
         CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991).epsilon(tol));
         CHECK(pot.short_range_function(1.0) == Approx(0.0).epsilon(tol));
-        CHECK(pot.self_energy({4.0, 0.0}) == Approx( Wolf(alpha, cutoff).self_energy({4.0, 0.0}) ) );
+        CHECK(pot.self_energy({4.0, 0.0}) == Approx(Wolf(alpha, cutoff).self_energy({4.0, 0.0})));
     }
 
     SUBCASE("Poisson") {
@@ -670,8 +670,8 @@ TEST_CASE("[CoulombGalore] Splined") {
         int D = 3;              // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
         double zA = 2.0;        // charge
         vec3 muA = {19, 7, 11}; // dipole moment
-        vec3 r = {0.5*cutoff, 0, 0}; // distance vector
-        vec3 rh = {1, 0, 0};            // normalized distance vector
+        vec3 r = {0.5 * cutoff, 0, 0}; // distance vector
+        vec3 rh = {1, 0, 0};           // normalized distance vector
 
         pot.spline<Poisson>(cutoff, C, D);
         CHECK(pot.name == "poisson");
@@ -687,7 +687,7 @@ TEST_CASE("[CoulombGalore] Splined") {
         CHECK(pot.ion_potential(zA, cutoff) == Approx(0.0).epsilon(tol));
         CHECK(pot.ion_potential(zA, r.norm()) == Approx(0.02747844828).epsilon(tol));
 
-        CHECK((cutoff*rh).norm() == Approx(r.norm()*2.0).epsilon(tol));
+        CHECK((cutoff * rh).norm() == Approx(r.norm() * 2.0).epsilon(tol));
         CHECK(pot.dipole_potential(muA, cutoff * rh) == Approx(0.0).epsilon(tol));
         CHECK(pot.dipole_potential(muA, r) == Approx(0.06989447087).epsilon(tol));
     }

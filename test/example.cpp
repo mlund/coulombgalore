@@ -42,12 +42,11 @@ int main() {
 
     Fanourgakis pot_kis(cutoff);
     Ewald pot_ewald(cutoff, 0.1e10, infinity);
-    
-    for (double q=0; q<=1; q+=0.01)
-        std::cout << q << " " << pot_qpot3.short_range_function(q)
-            << " " << pot_qpot4.short_range_function(q) << " "
-            << " " << pot_kis.short_range_function(q) << " "
-            << " " << pot_ewald.short_range_function(q) << "\n";
+
+    for (double q = 0; q <= 1; q += 0.01)
+        std::cout << q << " " << pot_qpot3.short_range_function(q) << " " << pot_qpot4.short_range_function(q) << " "
+                  << " " << pot_kis.short_range_function(q) << " "
+                  << " " << pot_ewald.short_range_function(q) << "\n";
 
 #ifdef NLOHMANN_JSON_HPP
     // this is a truncated potential initiated using JSON
