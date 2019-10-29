@@ -1,0 +1,33 @@
+{
+    "title": "CoulombGalore - A Library for Electrostatic Interactions",
+    "description": "This is a C++ library for calculating the potential, field, forces, and interactions from and between electric multipoles. Focus is on approximate truncation schemes that offer fast alternatives to lattice sums such as Ewald summation. All implemented methods are unit tested.",
+    "creators": [
+        {
+            "name": "Björn Stenqvist",
+            "affiliation": "Division of Physical Chemistry, Department of Chemistry, Lund University, Sweden",
+            "orcid": "0000-0002-9099-0663"
+        },
+        {
+            "name": "Mikael Lund",
+            "affiliation": "Division of Theoretical Chemistry, Department of Chemistry, Lund University, Sweden",
+            "orcid": "0000-0001-8178-8175"
+        }
+    ],
+    "keywords": [
+        "electrostatics",
+        "molecular dynamics",
+        "monte carlo simulation",
+        "intermolecular interactions",
+        "multipoles",
+        "electric field"
+    ],
+    "related_identifiers": [
+        {
+            "identifier": "10.1039/c9cp03875b",
+            "relation": "isSupplementTo",
+            "scheme": "doi"
+        }
+    ],
+    "license": "mit-license",
+    "upload_type": "software"
+}
