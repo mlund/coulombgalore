@@ -610,15 +610,15 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
     }
 
     /**
-     * @brief potential from ion
-     * @returns potential from ion in electrostatic units ( why not Hartree atomic units? )
+     * @brief electrostatic potential from point charge
+     * @returns potential in electrostatic units ( why not Hartree atomic units? )
      * @param z charge
      * @param r distance from charge
      *
-     * @details The potential from a charge is described by
-     * @f$
+     * The electrostatic potential from a point charge is described by
+     * @f[
      *     \Phi(z,r) = \frac{z}{r}s(q)
-     * @f$
+     * @f]
      */
     inline double ion_potential(double z, double r) const override {
         if (r < cutoff) {
@@ -633,12 +633,12 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
     }
 
     /**
-     * @brief potential from dipole
-     * @returns potential from dipole in electrostatic units ( why not Hartree atomic units? )
-     * @param mu dipole
-     * @param r distance-vector from dipole
+     * @brief potential from point dipole
+     * @returns potential in electrostatic units ( why not Hartree atomic units? )
+     * @param mu dipole moment
+     * @param r distance vector from dipole
      *
-     * @details The potential from a charge is described by
+     * The potential from a point dipole is described by
      * @f[
      *     \Phi(\boldsymbol{\mu}, {\bf r}) = \frac{\boldsymbol{\mu} \cdot \hat{{\bf r}} }{|{\bf r}|^2} \left( s(q) -
      * qs^{\prime}(q) \right)
@@ -659,15 +659,15 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
     }
 
     /**
-     * @brief field from ion
+     * @brief field from point charge
      * @returns field in electrostatic units ( why not Hartree atomic units? )
-     * @param z charge
-     * @param r distance-vector from charge
+     * @param z point charge
+     * @param r distance-vector from point charge
      *
-     * @details The field from a charge is described by
-     * @f$
+     * The field from a charge is described by
+     * @f[
      *     {\bf E}(z, {\bf r}) = \frac{z \hat{{\bf r}} }{|{\bf r}|^2} \left( s(q) - qs^{\prime}(q) \right)
-     * @f$.
+     * @f].
      */
     inline vec3 ion_field(double z, const vec3 &r) const {
         double r2 = r.squaredNorm();
@@ -684,12 +684,12 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
     }
 
     /**
-     * @brief field from dipole
+     * @brief Field from point dipole
      * @returns field in electrostatic units ( why not Hartree atomic units? )
-     * @param mu dipole
-     * @param r distance-vector from dipole
+     * @param mu point dipole
+     * @param r distance-vector from point dipole
      *
-     * @details The field from a dipole is described by
+     * The field from a point dipole is described by
      * @f[
      *     {\bf E}(\boldsymbol{\mu}, {\bf r}) = \frac{3 ( \boldsymbol{\mu} \cdot \hat{{\bf r}} ) \hat{{\bf r}} -
      * \boldsymbol{\mu} }{|{\bf r}|^3} \left( s(q) - qs^{\prime}(q)  + \frac{q^2}{3}s^{\prime\prime}(q) \right) +
@@ -719,13 +719,13 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
     }
 
     /**
-     * @brief interaction energy between two ions
+     * @brief interaction energy between two point charges
      * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
-     * @param zA charge
-     * @param zB charge
-     * @param r charge separation
+     * @param zA point charge
+     * @param zB point charge
+     * @param r charge-charge separation
      *
-     * @details The interaction energy between two charges is decribed by
+     * The interaction energy between two charges is decribed by
      * @f$
      *     u(z_A, z_B, r) = z_B \Phi(z_A,r)
      * @f$
@@ -734,21 +734,21 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
     inline double ion_ion_energy(double zA, double zB, double r) const override { return zB * ion_potential(zA, r); }
 
     /**
-     * @brief interaction energy between an ion and a dipole
+     * @brief interaction energy between a point charge and a point dipole
      * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
-     * @param z charge
+     * @param z point charge
      * @param mu dipole moment
-     * @param r distance-vector between dipole and charge, @f[ {\bf r} = {\bf r}_{\mu} - {\bf r}_z @f]
+     * @param r distance-vector between dipole and charge, @f$ {\bf r} = {\bf r}_{\mu} - {\bf r}_z @f$
      *
-     * @details The interaction energy between an ion and a dipole is decribed by
-     * @f$
+     * The interaction energy between an ion and a dipole is decribed by
+     * @f[
      *     u(z, \boldsymbol{\mu}, {\bf r}) = z \Phi(\boldsymbol{\mu}, -{\bf r})
-     * @f$
+     * @f]
      * where @f$ \Phi(\boldsymbol{\mu}, -{\bf r}) @f$ is the potential from the dipole at the location of the ion.
      * This interaction can also be described by
-     * @f$
+     * @f[
      *     u(z, \boldsymbol{\mu}, {\bf r}) = -\boldsymbol{\mu}\cdot {\bf E}(z, {\bf r})
-     * @f$
+     * @f]
      * where @f$ {\bf E}(z, {\bf r}) @f$ is the field from the ion at the location of the dipole.
      */
     inline double ion_dipole_energy(double z, const vec3 &mu, const vec3 &r) const override {
@@ -758,17 +758,17 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
     }
 
     /**
-     * @brief Interaction energy between two dipoles
+     * @brief Interaction energy between two point dipoles
      * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
      * @param muA dipole moment of particle A
      * @param muB dipole moment of particle B
-     * @param r distance-vector between dipoles, @f[ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f]
+     * @param r distance-vector between dipoles, @f$ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f$
      *
-     * @details The interaction energy between two dipoles is decribed by
-     * @f$
+     * The interaction energy between two dipoles is decribed by
+     * @f[
      *     u(\boldsymbol{\mu}_A, \boldsymbol{\mu}_B, {\bf r}) = -\boldsymbol{\mu}_A\cdot {\bf E}(\boldsymbol{\mu}_B,
      * {\bf r})
-     * @f$
+     * @f]
      * where @f$ {\bf E}(\boldsymbol{\mu}_B, {\bf r}) @f$ is the field from dipole B at the location of dipole A.
      */
     inline double dipole_dipole_energy(const vec3 &muA, const vec3 &muB, const vec3 &r) const override {
@@ -778,13 +778,13 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
     /**
      * @brief Interaction energy between two multipoles with charges and dipole moments
      * @returns interaction energy in electrostatic units ( why not Hartree atomic units? )
-     * @param zA charge of particle A
-     * @param zB charge of particle B
-     * @param muA dipole moment of particle A
-     * @param muB dipole moment of particle B
-     * @param r distance-vector between dipoles, @f[ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f]
+     * @param zA point charge of particle A
+     * @param zB point charge of particle B
+     * @param muA point dipole moment of particle A
+     * @param muB point dipole moment of particle B
+     * @param r distance-vector between dipoles, @f$ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f$
      *
-     * @details A combination of the functions 'ion_ion_energy', 'ion_dipole_energy' and 'dipole_dipole_energy'.
+     * A combination of the functions 'ion_ion_energy', 'ion_dipole_energy' and 'dipole_dipole_energy'.
      */
     inline double multipole_multipole_energy(double zA, double zB, const vec3 &muA, const vec3 &muB,
                                              const vec3 &r) const override {
@@ -814,16 +814,16 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
     }
 
     /**
-     * @brief Ion-ion interaction force
-     * @returns interaction force in electrostatic units ( why not Hartree atomic units? )
-     * @param zA charge
-     * @param zB charge
-     * @param r distance-vector between charges, @f[ {\bf r} = {\bf r}_{z_B} - {\bf r}_{z_A} @f]
+     * @brief Force between two point charges
+     * @returns force in electrostatic units ( why not Hartree atomic units? )
+     * @param zA point charge
+     * @param zB point charge
+     * @param r distance-vector between charges, @f$ {\bf r} = {\bf r}_{z_B} - {\bf r}_{z_A} @f$
      *
-     * @details The force between two ions is described by
-     * @f$
+     * The force between two point charges is described by
+     * @f[
      *     {\bf F}(z_A, z_B, {\bf r}) = z_B {\bf E}(z_A, {\bf r})
-     * @f$
+     * @f]
      * where @f$ {\bf E}(z_A, {\bf r}) @f$ is the field from ion A at the location of ion B.
      */
     inline vec3 ion_ion_force(double zA, double zB, const vec3 &r) const override { return zB * ion_field(zA, r); }
@@ -833,7 +833,7 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
      * @returns Interaction force in electrostatic units ( why not Hartree atomic units? )
      * @param z charge
      * @param mu dipole moment
-     * @param r distance-vector between dipole and charge, @f[ {\bf r} = {\bf r}_{\mu} - {\bf r}_z @f]
+     * @param r distance-vector between dipole and charge, @f$ {\bf r} = {\bf r}_{\mu} - {\bf r}_z @f$
      *
      * @details The force between an ion and a dipole is decribed by
      * @f[
@@ -1538,6 +1538,13 @@ template <int order> class qPotentialFixedOrder : public EnergyImplementation<qP
 
 /**
  * @brief qPotential scheme
+ * @note http://dx.doi.org/10/c5fr
+ *
+ * The short-ranged function is
+ *
+ * @f[
+ * S(q) = \prod_{n=1}^{\text{order}}(1-q^n)
+ * @f]
  */
 class qPotential : public EnergyImplementation<qPotential> {
   private:
@@ -1580,9 +1587,17 @@ class qPotential : public EnergyImplementation<qPotential> {
 };
 
 /**
- * @brief Poisson scheme, also works for Yukawa-potential
+ * @brief Poisson scheme with and without specified Debye-length
  *
  * A general scheme which pending two parameters `C` and `D` can model several different pair-potentials.
+ * The short-ranged function is
+ *
+ * @f[
+ * S(q) = (1-\tilde{q})^{D+1}\sum_{c=0}^{C-1}\frac{C-c}{C}{D-1+c\choose c}\tilde{q}^c
+ * @f]
+ * where `C` is the number of cancelled derivatives at origin -2 (starting from second derivative),
+ * and  `D` is the number of cancelled derivatives at the cut-off (starting from zeroth derivative)
+ *
  * For infinite Debye-length the following holds:
  *
  * Type         | `C` | `D` | Reference / Comment
@@ -1596,15 +1611,6 @@ class qPotential : public EnergyImplementation<qPotential> {
  * `markland`   |  2  |  2  | Markland, doi:10.1016/j.cplett.2008.09.019
  * `stenqvist`  |  3  |  3  | Stenqvist, doi:10/c5fr
  * `fanourgakis`|  4  |  3  | Fanourgakis, doi:10.1063/1.3216520
- *
- *  The following keywords are required:
- *
- *  Keyword        |  Description
- *  -------------- |  -------------------------------------------
- *  `cutoff`       |  Spherical cutoff
- *  `C`            |  Number of cancelled derivatives at origin -2 (starting from second derivative)
- *  `D`            |  Number of cancelled derivatives at the cut-off (starting from zeroth derivative)
- *  `debye_length` |  Debye-length (optional)
  *
  *  More info:
  *
@@ -1620,6 +1626,12 @@ class Poisson : public EnergyImplementation<Poisson> {
     bool yukawa;
 
   public:
+    /**
+     * @param cutoff Spherical cutoff distance
+     * @param C number of cancelled derivatives at origin -2 (starting from second derivative)
+     * @param D number of cancelled derivatives at the cut-off (starting from zeroth derivative)
+     * @param debye_length Debye screening length (infinite by default)
+     */
     inline Poisson(double cutoff, signed int C, signed int D, double debye_length = infinity)
         : EnergyImplementation(Scheme::poisson, cutoff, debye_length), C(C), D(D) {
         if ((C < 1) || (D < -1))
