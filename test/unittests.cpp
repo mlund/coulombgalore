@@ -665,6 +665,14 @@ TEST_CASE("[CoulombGalore] Splined") {
         CHECK(pot.self_energy({4.0, 0.0}) == Approx(Wolf(alpha, cutoff).self_energy({4.0, 0.0})));
     }
 
+    SUBCASE("qPotential") {
+        int order = 3;
+        pot.spline<qPotential>(cutoff, order);
+        // Test self energy
+        CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.06896551724));
+        CHECK(pot.self_energy({0.0, 2.0}) == Approx(-0.000041002091105));
+    }
+
     SUBCASE("Poisson") {
         int C = 4;              // number of cancelled derivatives at origin -2 (starting from second derivative)
         int D = 3;              // number of cancelled derivatives at the cut-off (starting from zeroth derivative)
