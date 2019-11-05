@@ -614,7 +614,9 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(F_multipolemultipole_Y[1] == Approx(-0.0073917139637));
     CHECK(F_multipolemultipole_Y[2] == Approx(-0.0046697315045));
 
-    // CHECK(Poisson(cutoff, 1, -1).short_range_function(0.5) == Approx(Plain().short_range_function(0.5) ));
+    CHECK(Poisson(cutoff, 1, -1).short_range_function(0.5) == Approx(Plain().short_range_function(0.5) ));
+    CHECK(Poisson(cutoff, 1, -1, debye_length).short_range_function(0.5) == Approx(Plain(debye_length).short_range_function(0.5) ));
+    CHECK(Poisson(cutoff, 1, 0).short_range_function(0.5) == Approx(Wolf(cutoff,0.0).short_range_function(0.5) ));
 }
 
 TEST_CASE("[CoulombGalore] createScheme") {

@@ -75,7 +75,7 @@ inline double powi(double x, int n) {
  */
 inline constexpr unsigned int factorial(unsigned int n) { return n <= 1 ? 1 : n * factorial(n - 1); }
 
-constexpr unsigned int binomial(unsigned int n, unsigned int k) {
+constexpr unsigned int binomial(signed int n, signed int k) {
     return factorial(n) / (factorial(k) * factorial(n - k));
 }
 
@@ -1622,12 +1622,18 @@ class Poisson : public EnergyImplementation<Poisson> {
   public:
     inline Poisson(double cutoff, signed int C, signed int D, double debye_length = infinity)
         : EnergyImplementation(Scheme::poisson, cutoff, debye_length), C(C), D(D) {
-        if ((C < 1) || (D < -1))
-            throw std::runtime_error("`C` must be larger than zero and `D` must be larger or equal to negative one");
+        if ( C < 1 )
+            throw std::runtime_error("`C` must be larger than zero");
+        if ( ( D < -1 ) && ( D != -C ) )
+            throw std::runtime_error("If `D` is less than negative one, then it has to equal negative `C`");
+        if ( ( D == 0 ) && ( C != 1 ) )
+            throw std::runtime_error("If `D` is zero, then `C` has to equal one ");
         name = "poisson";
         doi = "10/c5fr";
         double a1 = -double(C + D) / double(C);
-        kappaRed = cutoff / debye_length;
+        kappaRed = 0.0;
+        if( !std::isinf(debye_length) )
+            kappaRed = cutoff / debye_length;
         yukawa = false;
         if (std::fabs(kappaRed) > 1e-6) {
             yukawa = true;
@@ -1635,7 +1641,9 @@ class Poisson : public EnergyImplementation<Poisson> {
             yukawa_denom = 1.0 / (1.0 - std::exp(2.0 * kappaRed));
             a1 *= -2.0 * kappaRed * yukawa_denom;
         }
-        binomCDC = double(binomial(C + D, C) * D);
+        binomCDC = 0.0;
+        if( D != -C )
+            binomCDC = double(binomial(C + D, C) * D);
         self_energy_prefactor = {0.5 * a1, 0.0}; // Dipole self-energy seems to be 0 for C >= 2
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) +
              short_range_function(0.0); // Is this OK for Yukawa-interactions?
@@ -1645,16 +1653,24 @@ class Poisson : public EnergyImplementation<Poisson> {
     }
 
     inline double short_range_function(double q) const override {
+        if( D == -C )
+            return 1.0;
         double tmp = 0;
         double qp = q;
         if (yukawa)
             qp = (1.0 - std::exp(2.0 * kappaRed * q)) * yukawa_denom;
+        if( ( D == 0 ) && ( C == 1 ) )
+            return ( 1.0 - qp );
         for (signed int c = 0; c < C; c++)
             tmp += double(binomial(D - 1 + c, c)) * double(C - c) / double(C) * powi(qp, c);
         return powi(1.0 - qp, D + 1) * tmp;
     }
 
     inline double short_range_function_derivative(double q) const override {
+        if( D == -C )
+            return 0.0;
+        if( ( D == 0 ) && ( C == 1 ) )
+            return 0.0;
         double qp = q;
         double dqpdq = 1.0;
         if (yukawa) {
@@ -1674,6 +1690,10 @@ class Poisson : public EnergyImplementation<Poisson> {
     }
 
     inline double short_range_function_second_derivative(double q) const override {
+        if( D == -C )
+            return 0.0;
+        if( ( D == 0 ) && ( C == 1 ) )
+            return 0.0;
         double qp = q;
         double dqpdq = 1.0;
         double d2qpdq2 = 0.0;
@@ -1695,6 +1715,10 @@ class Poisson : public EnergyImplementation<Poisson> {
     };
 
     inline double short_range_function_third_derivative(double q) const override {
+        if( D == -C )
+            return 0.0;
+        if( ( D == 0 ) && ( C == 1 ) )
+            return 0.0;
         double qp = q;
         double dqpdq = 1.0;
         double d2qpdq2 = 0.0;
