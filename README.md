@@ -63,3 +63,43 @@ Class name                                      | _S(q)_
 Here 
 
 ![equation](https://latex.codecogs.com/svg.latex?q%3D%5Cfrac%7Br%7D%7BR_c%7D%5Cquad%5Cquad%20%5Ctilde%7Bq%7D%3D%5Cfrac%7B1-%5Cexp%282%5Ckappa%5E*q%29%7D%7B1-%5Cexp%282%5Ckappa%5E*%29%7D%20%5Cquad%5Cquad%20%5Ceta%20%3D%20%5Calpha%20R_c%20%5Cquad%5Cquad%20%5Ckappa%5E*%3D%5Ckappa%20R_c.) 
+
+### Units
+
+It is vital that the units of the function input values and input-parameters are consistent, such that correct output units are retrieved.
+In terms of the input charge unit `Z`, and input length unit `L`, the input-parameters, function output and inputs are listed in tables below.
+All charges must have unit `Z`, dipoles `Z*L`, distances `L`, fields `Z/L^2`, and volumes `L^3`.
+Also note that the input _M2V_ for function `calc_dielectric` has to be unitless.
+
+Input-parameter | Unit
+--------------- | -------------------
+`cutoff`        | `L`
+`debye_length`  | `L`
+`alpha`         | `L^-1`
+`order`         | `positive integer`
+`C`             | `positive integer`
+`D`             | `integer`
+`epss`          | `unitless`
+`epsRF`         | `unitless`
+`epsr`          | `unitless`
+`shifted`       | `boolean`
+
+
+Function                    | Output unit
+--------------------------- | -------------
+`ion_potential`             | `Z / L`
+`dipole_potential`          | `Z / L`
+`ion_field`                 | `Z / L^2`
+`dipole_field`              | `Z / L^2`
+`multipole_field`           | `Z / L^2`
+`ion_ion_energy`            | `Z^2 / L`
+`ion_dipole_energy`         | `Z^2 / L`
+`dipole_dipole_energy`      | `Z^2 / L`
+`multipole_multipole_energy`| `Z^2 / L`
+`ion_ion_force`             | `Z^2 / L^2`
+`ion_dipole_force`          | `Z^2 / L^2`
+`dipole_dipole_force`       | `Z^2 / L^2`
+`multipole_multipole_force` | `Z^2 / L^2`
+`dipole_torque`             | `Z^2 / L`
+`self_energy`               | `Z^2 / L`
+`neutralization_energy`     | `Z^2 / L`
