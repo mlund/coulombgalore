@@ -520,7 +520,8 @@ class SchemeBase {
     double cutoff2;   // square cutoff distance
     double kappa;     // inverse Debye-length
     double T0;  // Spatial Fourier transformed modified interaction tensor, used to calculate the dielectric constant
-    double chi; //!< Negative integrated volume potential, used to neutralize charged system
+    double chi; // Negative integrated volume potential, used to neutralize charged system
+    bool dipolar_selfenergy; // is there a valid dipolar self-energy?
     std::array<double, 2> self_energy_prefactor; // Prefactor for self-energies
 
   public:
@@ -541,14 +542,15 @@ class SchemeBase {
      * @brief Calculate dielectric constant
      * @param M2V see details
      *
-     * @details The paramter `M2V` is described by
+     * @details The dimensionless paramter `M2V` is described by
      * @f$
      *     M2V = \frac{\langle M^2\rangle}{ 3\varepsilon_0Vk_BT }
      * @f$
      * where @f$ \langle M^2\rangle @f$ is mean value of the system dipole moment squared,
      * @f$ \varepsilon_0 @f$ is the vacuum permittivity, _V_ the volume of the system,
-     * _kB_ the Boltzmann constant, _T_ the temperature, and _T0_ the
-     * Spatial Fourier transformed modified interaction tensor.
+     * _kB_ the Boltzmann constant, and _T_ the temperature.
+     * When calculating the dielectric constant _T0_ is also needed, i.e. the Spatial Fourier 
+     * transformed modified interaction tensor, which is automatically given for each scheme.
      */
     double calc_dielectric(double M2V) { return (M2V * T0 + 2.0 * M2V + 1.0) / (M2V * T0 - M2V + 1.0); }
 
@@ -1007,6 +1009,7 @@ class Plain : public EnergyImplementation<Plain> {
     inline Plain(double debye_length = infinity)
         : EnergyImplementation(Scheme::plain, std::numeric_limits<double>::max(), debye_length) {
         name = "plain";
+        dipolar_selfenergy = true;
         doi = "Premier mémoire sur l’électricité et le magnétisme by Charles-Augustin de Coulomb"; // :P
         self_energy_prefactor = {0.0, 0.0};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
@@ -1051,6 +1054,8 @@ class Ewald : public EnergyImplementation<Ewald> {
     inline Ewald(double cutoff, double alpha, double eps_sur = infinity, double debye_length = infinity)
         : EnergyImplementation(Scheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur) {
         name = "Ewald real-space";
+        dipolar_selfenergy = true;
+        doi = "10.1002/andp.19213690304";
         alpha2 = alpha * alpha;
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
@@ -1224,6 +1229,8 @@ class ReactionField : public EnergyImplementation<ReactionField> {
     inline ReactionField(double cutoff, double epsRF, double epsr, bool shifted)
         : EnergyImplementation(Scheme::reactionfield, cutoff), epsRF(epsRF), epsr(epsr), shifted(shifted) {
         name = "Reaction-field";
+        dipolar_selfenergy = true;
+        doi = "10.1080/00268977300102101";
         epsRF = epsRF;
         epsr = epsr;
         shifted = shifted;
@@ -1282,6 +1289,8 @@ class Zahn : public EnergyImplementation<Zahn> {
      */
     inline Zahn(double cutoff, double alpha) : EnergyImplementation(Scheme::zahn, cutoff), alpha(alpha) {
         name = "Zahn";
+        dipolar_selfenergy = false;
+        doi = "10.1021/jp025949h";
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
         self_energy_prefactor = {-alphaRed * (1.0 - std::exp(-alphaRed2)) / pi_sqrt + 0.5 * std::erfc(alphaRed),
@@ -1340,6 +1349,8 @@ class Fennell : public EnergyImplementation<Fennell> {
      */
     inline Fennell(double cutoff, double alpha) : EnergyImplementation(Scheme::fennell, cutoff), alpha(alpha) {
         name = "Fennell";
+        dipolar_selfenergy = false;
+        doi = "10.1063/1.2206581";
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
         self_energy_prefactor = {-alphaRed * (1.0 + std::exp(-alphaRed2)) / pi_sqrt - std::erfc(alphaRed),
@@ -1396,6 +1407,8 @@ class ZeroDipole : public EnergyImplementation<ZeroDipole> {
      */
     inline ZeroDipole(double cutoff, double alpha) : EnergyImplementation(Scheme::zerodipole, cutoff), alpha(alpha) {
         name = "ZeroDipole";
+        dipolar_selfenergy = true;
+        doi = "10.1063/1.3582791";
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
         self_energy_prefactor = {-alphaRed * (1.0 + 0.5 * std::exp(-alphaRed2)) / pi_sqrt - 0.75 * std::erfc(alphaRed),
@@ -1460,6 +1473,8 @@ class Wolf : public EnergyImplementation<Wolf> {
      */
     inline Wolf(double cutoff, double alpha) : EnergyImplementation(Scheme::wolf, cutoff), alpha(alpha) {
         name = "Wolf";
+        dipolar_selfenergy = true;
+        doi = "10.1063/1.478738";
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
         self_energy_prefactor = {-alphaRed / pi_sqrt - std::erfc(alphaRed) / 2.0,
@@ -1509,7 +1524,8 @@ template <int order> class qPotentialFixedOrder : public EnergyImplementation<qP
      */
     inline qPotentialFixedOrder(double cutoff) : base(Scheme::qpotential, cutoff) {
         name = "qpotential";
-        this->doi = "10/c5fr";
+        this->dipolar_selfenergy = true;
+        this->doi = "10.1039/c9cp03875b";
         self_energy_prefactor = {-0.5, -0.5};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
         chi = -86459.0 * std::acos(-1.0) * cutoff * cutoff / 235620.0;
@@ -1557,7 +1573,8 @@ class qPotential : public EnergyImplementation<qPotential> {
      */
     inline qPotential(double cutoff, int order) : EnergyImplementation(Scheme::qpotential, cutoff), order(order) {
         name = "qpotential";
-        doi = "10/c5fr";
+        dipolar_selfenergy = true;
+        doi = "10.1039/c9cp03875b";
         self_energy_prefactor = {-0.5, -0.5};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
         chi = 0.0; // -Pi*Rc^2 * [  2/3   7/15  17/42 146/385  86459/235620 ]
@@ -1641,22 +1658,28 @@ class Poisson : public EnergyImplementation<Poisson> {
         if ( ( D == 0 ) && ( C != 1 ) )
             throw std::runtime_error("If `D` is zero, then `C` has to equal one ");
         name = "poisson";
+        dipolar_selfenergy = true;
+        if(C < 2)
+            dipolar_selfenergy = false;
         doi = "10/c5fr";
         double a1 = -double(C + D) / double(C);
         kappaRed = 0.0;
-        if( !std::isinf(debye_length) )
-            kappaRed = cutoff / debye_length;
         yukawa = false;
-        if (std::fabs(kappaRed) > 1e-6) {
-            yukawa = true;
-            kappaRed2 = kappaRed * kappaRed;
-            yukawa_denom = 1.0 / (1.0 - std::exp(2.0 * kappaRed));
-            a1 *= -2.0 * kappaRed * yukawa_denom;
+        if( !std::isinf(debye_length) ) {
+            kappaRed = cutoff / debye_length;
+            if (std::fabs(kappaRed) > 1e-6) {
+                yukawa = true;
+                kappaRed2 = kappaRed * kappaRed;
+                yukawa_denom = 1.0 / (1.0 - std::exp(2.0 * kappaRed));
+                a1 *= -2.0 * kappaRed * yukawa_denom;
+            }
         }
         binomCDC = 0.0;
         if( D != -C )
             binomCDC = double(binomial(C + D, C) * D);
         self_energy_prefactor = {0.5 * a1, 0.0}; // Dipole self-energy seems to be 0 for C >= 2
+        if(C == 2)
+            self_energy_prefactor.at(2) = -double(D) * ( double(D*D) + 3.0 * double(D) + 2.0 ) / 12.0;
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) +
              short_range_function(0.0); // Is this OK for Yukawa-interactions?
         chi = -2.0 * std::acos(-1.0) * cutoff * cutoff * (1.0 + double(C)) * (2.0 + double(C)) /
@@ -1783,6 +1806,7 @@ class Fanourgakis : public EnergyImplementation<Fanourgakis> {
      */
     inline Fanourgakis(double cutoff) : EnergyImplementation(Scheme::fanourgakis, cutoff) {
         name = "fanourgakis";
+        dipolar_selfenergy = true;
         doi = "10.1063/1.3216520";
         self_energy_prefactor = {-0.875, 0.0};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
