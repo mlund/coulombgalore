@@ -67,8 +67,8 @@ Here
 ### Units
 
 It is vital that the units of the function input values and input-parameters are consistent, such that correct output units are retrieved.
-In terms of the input charge unit `Z`, and input length unit `L`, the input-parameters, function output and inputs are listed in tables below.
-All charges must have unit `Z`, dipoles `Z*L`, distances `L`, fields `Z/L^2`, and volumes `L^3`.
+In terms of the charge unit `Z`, and length unit `L`, the input-parameters, function output and inputs are listed in tables below.
+All charges must have units `Z`, dipoles `Z*L`, distances `L`, fields `Z/L^2`, and volumes `L^3`.
 Also note that the input _M2V_ for function `calc_dielectric` has to be unitless.
 
 Input-parameter | Unit
