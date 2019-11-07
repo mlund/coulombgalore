@@ -549,7 +549,7 @@ class SchemeBase {
      * @f$
      * where @f$ \langle M^2\rangle @f$ is mean value of the system dipole moment squared,
      * @f$ \varepsilon_0 @f$ is the vacuum permittivity, _V_ the volume of the system,
-     * _kB_ the Boltzmann constant, and _T_ the temperature.
+     * @f$ k_B @f$ the Boltzmann constant, and _T_ the temperature.
      * When calculating the dielectric constant _T0_ is also needed, i.e. the Spatial Fourier 
      * transformed modified interaction tensor, which is automatically given for each scheme.
      */
@@ -1011,7 +1011,7 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
      * @param m2 vector with square moments, i.e. charge squared, dipole moment squared, etc., UNIT: [ ( input charge )^2 , ( input length )^2 x ( input charge )^2 , ... ]
      * @returns self-energy, UNIT: [ ( input charge )^2 / ( input length ) ]
      *
-     * @details The torque on a dipole in a field is described by
+     * @details The self-energy is described by
      * @f$
      *     u_{self} = p_1 \frac{z^2}{R_c} + p_2 \frac{|\boldsymbol{\mu}|^2}{R_c^3} + \cdots
      * @f$
