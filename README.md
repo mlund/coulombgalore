@@ -49,7 +49,7 @@ int main() {
 Class name                                      | _S(q)_
 ----------------------------------------------- | ------------------------
 [`Plain`](http://doi.org/ctnnsj)                | 1
-[`ReactionField`](http://doi.org/dbs99w)        | ![equation](https://latex.codecogs.com/svg.latex?1&plus;%5Cfrac%7B%5Cepsilon_%7BRF%7D-%5Cepsilon_r%7D%7B2%5Cepsilon_%7BRF%7D&plus;%5Cepsilon_r%7Dq%5E3-3%5Cfrac%7B%5Cepsilon_%7BRF%7D%7D%7B2%5Cepsilon_%7BRF%7D&plus;%5Cepsilon_r%7Dq)
+[`ReactionField`](http://doi.org/10/dscmwg)     | ![equation](https://latex.codecogs.com/svg.latex?1&plus;%5Cfrac%7B%5Cepsilon_%7BRF%7D-%5Cepsilon_r%7D%7B2%5Cepsilon_%7BRF%7D&plus;%5Cepsilon_r%7Dq%5E3-3%5Cfrac%7B%5Cepsilon_%7BRF%7D%7D%7B2%5Cepsilon_%7BRF%7D&plus;%5Cepsilon_r%7Dq)
 [`Poisson`](http://doi.org/10/c5fr)             | ![equation](https://latex.codecogs.com/svg.latex?%281-%5Ctilde%7Bq%7D%29%5E%7BD&plus;1%7D%5Csum_%7Bc%3D0%7D%5E%7BC-1%7D%5Cfrac%7BC-c%7D%7BC%7D%7BD-1&plus;c%5Cchoose%20c%7D%5Ctilde%7Bq%7D%5Ec)
 [`qPotential`](https://arxiv.org/abs/1904.10335)| ![equation](https://latex.codecogs.com/svg.latex?%5Cprod_%7Bn%3D1%7D%5E%7B%5Ctext%7Border%7D%7D%281-q%5En%29)
 [`Fanourgakis`](http://doi.org/f639q5)          | ![equation](https://latex.codecogs.com/svg.latex?1-%5Cfrac%7B7%7D%7B4%7Dq&plus;%5Cfrac%7B21%7D%7B4%7Dq%5E5-7q%5E6&plus;%5Cfrac%7B5%7D%7B2%7Dq%5E7)
