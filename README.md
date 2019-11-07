@@ -53,17 +53,13 @@ Class name                                      | _S(q)_
 [`Poisson`](http://doi.org/10/c5fr)             | ![equation](https://latex.codecogs.com/svg.latex?%281-%5Ctilde%7Bq%7D%29%5E%7BD&plus;1%7D%5Csum_%7Bc%3D0%7D%5E%7BC-1%7D%5Cfrac%7BC-c%7D%7BC%7D%7BD-1&plus;c%5Cchoose%20c%7D%5Ctilde%7Bq%7D%5Ec)
 [`qPotential`](https://arxiv.org/abs/1904.10335)| ![equation](https://latex.codecogs.com/svg.latex?%5Cprod_%7Bn%3D1%7D%5E%7B%5Ctext%7Border%7D%7D%281-q%5En%29)
 [`Fanourgakis`](http://doi.org/f639q5)          | ![equation](https://latex.codecogs.com/svg.latex?1-%5Cfrac%7B7%7D%7B4%7Dq&plus;%5Cfrac%7B21%7D%7B4%7Dq%5E5-7q%5E6&plus;%5Cfrac%7B5%7D%7B2%7Dq%5E7)
-[`Fennell`](http://doi.org/10.1063/1.2206581)   | ![equation](https://latex.codecogs.com/svg.latex?%5Ctext%7Berfc%7D%28%5Calpha%20R_cq%29-q%5Ctext%7Berfc%7D%28%5Calpha%20R_c%29&plus;%28q-1%29q%5Cleft%28%5Ctext%7Berfc%7D%28%5Calpha%20R_c%29&plus;%5Cfrac%7B2%5Calpha%20R_c%7D%7B%5Csqrt%7B%5Cpi%7D%7D%5Ctext%7Bexp%7D%28-%5Calpha%5E2R_c%5E2%29%5Cright%29)
-[`ZeroDipole`](http://doi.org/10.1063/1.3582791)| ![equation](https://latex.codecogs.com/svg.latex?%5Ctext%7Berfc%7D%28%5Calpha%20R_cq%29-q%5Ctext%7Berfc%7D%28%5Calpha%20R_c%29&plus;%5Cfrac%7B%28q%5E2-1%29%7D%7B2%7Dq%5Cleft%28%5Ctext%7Berfc%7D%28%5Calpha%20R_c%29&plus;%5Cfrac%7B2%5Calpha%20R_c%7D%7B%5Csqrt%7B%5Cpi%7D%7D%5Ctext%7Bexp%7D%28-%5Calpha%5E2R_c%5E2%29%5Cright%29)
-[`Zahn`](http://doi.org/10.1021/jp025949h)      | ![equation](https://latex.codecogs.com/svg.latex?%5Ctext%7Berfc%7D%28%5Calpha%20R_c%20q%29-%28q-1%29q%5Cleft%28%5Ctext%7Berfc%7D%28%5Calpha%20R_c%29&plus;%5Cfrac%7B2%5Calpha%20R_c%7D%7B%5Csqrt%7B%5Cpi%7D%7D%5Ctext%7Bexp%7D%28-%5Calpha%5E2R_c%5E2%29%5Cright%29)
-[`Wolf`](http://doi.org/cfcxdk)                 | ![equation](https://latex.codecogs.com/svg.latex?%5Ctext%7Berfc%7D%28%5Calpha%20R_cq%29-%5Ctext%7Berfc%7D%28%5Calpha%20R_c%29q)
-[`Ewald`](http://doi.org/dgpdmc)                | ![equation](https://latex.codecogs.com/svg.latex?%5Cfrac%7B1%7D%7B2%7D%5Ctext%7Berfc%7D%5Cleft%28%5Calpha%20R_c%20q%20&plus;%20%5Cfrac%7B%5Ckappa%7D%7B2%5Calpha%7D%5Cright%29%5Ctext%7Bexp%7D%5Cleft%282%5Ckappa%20R_c%20q%5Cright%29%20&plus;%20%5Cfrac%7B1%7D%7B2%7D%5Ctext%7Berfc%7D%5Cleft%28%5Calpha%20R_c%20q%20-%20%5Cfrac%7B%5Ckappa%7D%7B2%5Calpha%7D%5Cright%29)
+[`Fennell`](http://doi.org/10.1063/1.2206581)   | ![equation](https://latex.codecogs.com/svg.latex?%5Ctext%7Berfc%7D%28%5Ceta%20q%29-q%5Ctext%7Berfc%7D%28%5Ceta%29&plus;%28q-1%29q%5Cleft%28%5Ctext%7Berfc%7D%28%5Ceta%29&plus;%5Cfrac%7B2%5Ceta%7D%7B%5Csqrt%7B%5Cpi%7D%7D%5Ctext%7Bexp%7D%28-%5Ceta%5E2%29%5Cright%29)
+[`ZeroDipole`](http://doi.org/10.1063/1.3582791)| ![equation](https://latex.codecogs.com/svg.latex?%5Ctext%7Berfc%7D%28%5Ceta%20q%29-q%5Ctext%7Berfc%7D%28%5Ceta%29&plus;%5Cfrac%7B%28q%5E2-1%29%7D%7B2%7Dq%5Cleft%28%5Ctext%7Berfc%7D%28%5Ceta%29&plus;%5Cfrac%7B2%5Ceta%7D%7B%5Csqrt%7B%5Cpi%7D%7D%5Ctext%7Bexp%7D%28-%5Ceta%5E2%29%5Cright%29)
+[`Zahn`](http://doi.org/10.1021/jp025949h)      | ![equation](https://latex.codecogs.com/svg.latex?%5Ctext%7Berfc%7D%28%5Ceta%20q%29-%28q-1%29q%5Cleft%28%5Ctext%7Berfc%7D%28%5Ceta%29&plus;%5Cfrac%7B2%5Ceta%7D%7B%5Csqrt%7B%5Cpi%7D%7D%5Ctext%7Bexp%7D%28-%5Ceta%5E2%29%5Cright%29)
+[`Wolf`](http://doi.org/cfcxdk)                 | ![equation](https://latex.codecogs.com/svg.latex?%5Ctext%7Berfc%7D%28%5Ceta%20q%29-%5Ctext%7Berfc%7D%28%5Ceta%29q)
+[`Ewald`](http://doi.org/dgpdmc)                | ![equation](https://latex.codecogs.com/svg.latex?%5Cfrac%7B1%7D%7B2%7D%5Ctext%7Berfc%7D%5Cleft%28%5Ceta%20q%20&plus;%20%5Cfrac%7B%5Ckappa%5E*%7D%7B2%5Ceta%7D%5Cright%29%5Ctext%7Bexp%7D%5Cleft%282%5Ckappa%5E*%20q%5Cright%29%20&plus;%20%5Cfrac%7B1%7D%7B2%7D%5Ctext%7Berfc%7D%5Cleft%28%5Ceta%20q%20-%20%5Cfrac%7B%5Ckappa%5E*%7D%7B2%5Ceta%7D%5Cright%29)
 `Splined`                                       | Splined version of any of the above
 
 Here 
 
-![equation](https://latex.codecogs.com/svg.latex?q%3D%5Cfrac%7Br%7D%7BR_c%7D) 
-
-and 
-
-![equation](https://latex.codecogs.com/svg.latex?%5Ctilde%7Bq%7D%3D%5Cfrac%7B1-%5Cexp%282%5Ckappa%5E*q%29%7D%7B1-%5Cexp%282%5Ckappa%5E*%29%7D.)
+![equation](https://latex.codecogs.com/svg.latex?q%3D%5Cfrac%7Br%7D%7BR_c%7D%5Cquad%5Cquad%20%5Ctilde%7Bq%7D%3D%5Cfrac%7B1-%5Cexp%282%5Ckappa%5E*q%29%7D%7B1-%5Cexp%282%5Ckappa%5E*%29%7D%20%5Cquad%5Cquad%20%5Ceta%20%3D%20%5Calpha%20R_c%20%5Cquad%5Cquad%20%5Ckappa%5E*%3D%5Ckappa%20R_c.) 
