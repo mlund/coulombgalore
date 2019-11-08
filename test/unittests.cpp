@@ -506,6 +506,10 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(E_dipole[0] == Approx(0.002702513754));
     CHECK(E_dipole[1] == Approx(-0.00009210857180));
     CHECK(E_dipole[2] == Approx(-0.0001447420414));
+    vec3 E_multipole = pot43.multipole_field(zA,muA, r);
+    CHECK(E_multipole[0] == Approx(0.0033077986544));
+    CHECK(E_multipole[1] == Approx(-0.00009210857180));
+    CHECK(E_multipole[2] == Approx(-0.0001447420414));
 
     // Test energies
     CHECK(pot43.ion_ion_energy(zA, zB, cutoff) == Approx(0.0));
@@ -576,6 +580,10 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(E_dipole_Y[0] == Approx(0.004956265485));
     CHECK(E_dipole_Y[1] == Approx(-0.0002585497523));
     CHECK(E_dipole_Y[2] == Approx(-0.0004062924688));
+    vec3 E_multipole_Y = potY.multipole_field(zA,muA, r);
+    CHECK(E_multipole_Y[0] == Approx(0.006655306715));
+    CHECK(E_multipole_Y[1] == Approx(-0.0002585497523));
+    CHECK(E_multipole_Y[2] == Approx(-0.0004062924688));
 
     // Test energies
     CHECK(potY.ion_ion_energy(zA, zB, cutoff) == Approx(0.0));
