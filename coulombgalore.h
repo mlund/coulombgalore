@@ -1110,7 +1110,7 @@ class Ewald : public EnergyImplementation<Ewald> {
             eps_sur = infinity;
         T0 = (std::isinf(eps_sur)) ? 1.0 : 2.0 * (eps_sur - 1.0) / (2.0 * eps_sur + 1.0);
         chi =
-            (2.0 * alphaRed * exp(-alphaRed2) / pi_sqrt + (-2.0 * alphaRed2 + 1) * erfc(alphaRed) - 1.0) * pi / alpha2;
+            (2.0 * alphaRed * exp(-alphaRed2) / pi_sqrt + (-2.0 * alphaRed2 + 1) * erfc(alphaRed) - 1.0) * pi / alpha2; // -pi / alpha^2 according to DOI:10.1021/ct400626b
         kappa = 1.0 / debye_length;
         kappa2 = kappa * kappa;
         beta = kappa / (2.0 * alpha);
@@ -1143,19 +1143,6 @@ class Ewald : public EnergyImplementation<Ewald> {
         return (4.0 * alphaRed3 / pi_sqrt *
                     (1.0 - 2.0 * (alphaRed * q - 2.0 * beta) * (alphaRed * q - beta) - 4.0 * beta2) * expC +
                 32.0 * alphaRed3 * beta3 * erfcC * std::exp(4.0 * alphaRed * beta * q));
-    }
-
-    /**
-     * @brief Compensating term for non-neutral systems
-     * @param charges Charges of particles
-     * @param volume Volume of unit-cell
-     * @note DOI:10.1021/ct400626b
-     */
-    inline double neutralization_energy(const std::vector<double> &charges, double volume) const override {
-        double squaredSumQ = 0.0;
-        for (size_t i = 0; i < charges.size(); i++)
-            squaredSumQ += charges[i] * charges[i]; // this should be squared, right?!
-        return (-pi / (2.0 * alpha2 * volume) * squaredSumQ);
     }
 
     /**
