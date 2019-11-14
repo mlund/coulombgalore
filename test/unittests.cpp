@@ -127,7 +127,10 @@ TEST_CASE("[CoulombGalore] plain") {
     double zB = 3.0;        // charge
     vec3 muA = {19, 7, 11}; // dipole moment
     vec3 muB = {13, 17, 5}; // dipole moment
+    mat33 quadA;            // quadrupole moment
+    quadA << 3, 7, 8, 5, 9, 6, 2, 1, 4;
     vec3 r = {23, 0, 0};    // distance vector
+    vec3 rq = {5.75*std::sqrt(6.0), 5.75*std::sqrt(2.0), 11.5*std::sqrt(2.0)};    // distance vector for quadrupole check
     vec3 rh = {1, 0, 0};    // normalized distance vector
     Plain pot;
 
@@ -147,6 +150,7 @@ TEST_CASE("[CoulombGalore] plain") {
     CHECK(pot.ion_potential(zA, r.norm()) == Approx(0.08695652174));
     CHECK(pot.dipole_potential(muA, (cutoff + 1.0) * rh) == Approx(0.02111111111));
     CHECK(pot.dipole_potential(muA, r) == Approx(0.03591682420));
+    CHECK(pot.quadrupole_potential(quadA, rq) == Approx(0.00093632817));
 
     // Test fields
     CHECK(pot.ion_field(zA, (cutoff + 1.0) * rh).norm() == Approx(0.002222222222));
@@ -235,6 +239,42 @@ TEST_CASE("[CoulombGalore] plain") {
     CHECK(F_dipoledipole[0] == Approx(F_dipoledipole_approx[0]));
     CHECK(F_dipoledipole[1] == Approx(F_dipoledipole_approx[1]));
     CHECK(F_dipoledipole[2] == Approx(F_dipoledipole_approx[2]));
+
+    // Approximate a quadrupole by four charges and compare to point-quadrupole
+    d = 1e-4;                          // small distance
+    mat33 quad0;            // quadrupole moment
+    quad0 << -2.38, -0.42, 2.08, -0.42, 0.00, 0.24, 2.08, 0.24, -1.60;
+    vec3 r1 = {0.5*d, 0.2*d, 1.0*d};    // distance vector to charge 1
+    vec3 r2 = {1.0*d, 0.5*d, 0.2*d};    // distance vector to charge 2
+    vec3 r3 = {0.3*d, 0.5*d, 0.6*d};    // distance vector to charge 3
+    vec3 r4 = {-0.9*d, 0.2*d, 1.8*d};    // distance vector to charge 4
+    vec3 r_z1r2 = r - r1; // distance from charge 1 of quadrupole A to 'r'
+    vec3 r_z2r2 = r - r2; // distance from charge 2 of quadrupole A to 'r'
+    vec3 r_z3r2 = r - r3; // distance from charge 1 of quadrupole A to 'r'
+    vec3 r_z4r2 = r - r4; // distance from charge 2 of quadrupole A to 'r'
+    double q1 = 1.0 / d/ d;
+    double q2 = -2.0 / d/ d;
+    double q3 = 2.0 / d/ d;
+    double q4 = -1.0 / d/ d;
+
+    mat33 quad = r1*r1.transpose()*q1 + r2*r2.transpose()*q2 + r3*r3.transpose()*q3 + r4*r4.transpose()*q4;
+    CHECK(quad(0,0) == Approx(quad0(0,0)));
+    CHECK(quad(0,1) == Approx(quad0(0,1)));
+    CHECK(quad(0,2) == Approx(quad0(0,2)));
+    CHECK(quad(1,0) == Approx(quad0(1,0)));
+    CHECK(quad(1,1) == Approx(quad0(1,1)));
+    CHECK(quad(1,2) == Approx(quad0(1,2)));
+    CHECK(quad(2,0) == Approx(quad0(2,0)));
+    CHECK(quad(2,1) == Approx(quad0(2,1)));
+    CHECK(quad(2,2) == Approx(quad0(2,2)));
+
+    // Check potentials
+    double potA2 = pot.quadrupole_potential(quad0, r);
+    double potA2_1 = pot.ion_potential(q1, r_z1r2.norm());
+    double potA2_2 = pot.ion_potential(q2, r_z2r2.norm());
+    double potA2_3 = pot.ion_potential(q3, r_z3r2.norm());
+    double potA2_4 = pot.ion_potential(q4, r_z4r2.norm());
+    CHECK(potA2 == Approx(potA2_1 + potA2_2 + potA2_3 + potA2_4));
 
     // Check Yukawa-interactions
     double debye_length = 23.0;
@@ -480,7 +520,10 @@ TEST_CASE("[CoulombGalore] Poisson") {
     double zB = 3.0;        // charge
     vec3 muA = {19, 7, 11}; // dipole moment
     vec3 muB = {13, 17, 5}; // dipole moment
+    mat33 quadA;            // quadrupole moment
+    quadA << 3, 7, 8, 5, 9, 6, 2, 1, 4;
     vec3 r = {23, 0, 0};    // distance vector
+    vec3 rq = {5.75*std::sqrt(6.0), 5.75*std::sqrt(2.0), 11.5*std::sqrt(2.0)};    // distance vector for quadrupole check
     vec3 rh = {1, 0, 0};    // normalized distance vector
     Poisson pot43(cutoff, C, D);
 
@@ -495,6 +538,8 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(pot43.ion_potential(zA, r.norm()) == Approx(0.0009430652121));
     CHECK(pot43.dipole_potential(muA, cutoff * rh) == Approx(0.0));
     CHECK(pot43.dipole_potential(muA, r) == Approx(0.005750206554));
+    CHECK(pot43.quadrupole_potential(quadA, rq) == Approx(0.000899228165));
+    CHECK(pot43.quadrupole_potential(quadA, rq/23.0*29.0) == Approx(0.0)); // at the cutoff
 
     // Test fields
     CHECK(pot43.ion_field(zA, cutoff * rh).norm() == Approx(0.0));
@@ -569,6 +614,8 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(potY.ion_potential(zA, r.norm()) == Approx(0.003344219306));
     CHECK(potY.dipole_potential(muA, cutoff * rh) == Approx(0.0));
     CHECK(potY.dipole_potential(muA, r) == Approx(0.01614089171));
+    CHECK(potY.quadrupole_potential(quadA, rq) == Approx(0.0016294707475));
+    CHECK(potY.quadrupole_potential(quadA, rq/23.0*29.0) == Approx(0.0)); // at the cutoff
 
     // Test fields
     CHECK(potY.ion_field(zA, cutoff * rh).norm() == Approx(0.0));

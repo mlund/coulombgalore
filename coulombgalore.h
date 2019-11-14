@@ -37,6 +37,7 @@ namespace CoulombGalore {
 
 /** Typedef for 3D vector such a position or dipole moment */
 typedef Eigen::Vector3d vec3;
+typedef Eigen::Matrix3d mat33;
 
 constexpr double infinity = std::numeric_limits<double>::infinity(); //!< Numerical infinity
 
@@ -576,6 +577,7 @@ class SchemeBase {
 
     virtual double ion_potential(double, double) const = 0;
     virtual double dipole_potential(const vec3 &, const vec3 &) const = 0;
+    virtual double quadrupole_potential(const mat33 &, const vec3 &) const = 0;
 
     // add remaining funtions here...
 
@@ -660,6 +662,37 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
                    (static_cast<const T *>(this)->short_range_function(q) * (1.0 + kappa * r1) -
                     q * static_cast<const T *>(this)->short_range_function_derivative(q)) *
                    std::exp(-kappa * r1);
+        } else {
+            return 0.0;
+        }
+    }
+
+    /**
+     * @brief electrostatic potential from point dipole
+     * @param quad quadrupole moment (not necessarily traceless), UNIT: [ ( input length )^2 x ( input charge ) ]
+     * @param r distance vector from dipole, UNIT: [ input length ]
+     * @returns quadrupole potential, UNIT: [ ( input charge ) / ( input length ) ]
+     *
+     * The potential from a point quadrupole is described by
+     * @f[
+     *     \Phi(\boldsymbol{Q}, {\bf r}) = \frac{1}{2}...
+     * @f]
+     */
+    inline double quadrupole_potential(const mat33 &quad, const vec3 &r) const override {
+        double r2 = r.squaredNorm();
+        if (r2 < cutoff2) {
+            double r1 = std::sqrt(r2);
+            double q = r1 * invcutoff;
+            double q2 = q * q;
+            double kappa2 = kappa * kappa;
+            double kappa_x_r1 = kappa * r1;
+            double srf = static_cast<const T *>(this)->short_range_function(q);
+            double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
+            double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
+
+            double a = (srf * (1.0 + kappa_x_r1 + kappa2 * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa_x_r1) + q2 / 3.0 * ddsrf);
+            double b = (srf * kappa2 * r2 - 2.0 * kappa_x_r1 * q * dsrf + ddsrf * q2) / 3.0;
+            return 0.5 * ( ( 3.0/r2*r.transpose()*quad*r - quad.trace() ) * a + quad.trace() * b ) / r2 / r1 * std::exp(-kappa * r1);
         } else {
             return 0.0;
         }

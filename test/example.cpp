@@ -1,6 +1,7 @@
 #include <nlohmann/json.hpp>
 #include "coulombgalore.h"
 #include <iostream>
+#include <iomanip>      // std::setprecision
 
 using namespace CoulombGalore;
 
