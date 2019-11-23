@@ -162,6 +162,10 @@ TEST_CASE("[CoulombGalore] plain") {
     CHECK(E_dipole[0] == Approx(0.003123202104));
     CHECK(E_dipole[1] == Approx(-0.0005753267034));
     CHECK(E_dipole[2] == Approx(-0.0009040848196));
+    vec3 E_quadrupole = pot.quadrupole_field(quadA, r);
+    CHECK(E_quadrupole[0] == Approx(-0.00003752130674));
+    CHECK(E_quadrupole[1] == Approx(-0.00006432224013));
+    CHECK(E_quadrupole[2] == Approx(-0.00005360186677));
 
     // Test energies
     CHECK(pot.ion_ion_energy(zA, zB, (cutoff + 1.0)) == Approx(0.2));
@@ -170,6 +174,7 @@ TEST_CASE("[CoulombGalore] plain") {
     CHECK(pot.ion_dipole_energy(zA, muB, r) == Approx(-0.04914933837));
     CHECK(pot.dipole_dipole_energy(muA, muB, (cutoff + 1.0) * rh) == Approx(-0.01185185185));
     CHECK(pot.dipole_dipole_energy(muA, muB, r) == Approx(-0.02630064930));
+    CHECK(pot.ion_quadrupole_energy(zB, quadA, rq) == Approx(0.002808984511));
 
     // Test forces
     CHECK(pot.ion_ion_force(zA, zB, (cutoff + 1.0) * rh).norm() == Approx(0.006666666667));
@@ -275,6 +280,16 @@ TEST_CASE("[CoulombGalore] plain") {
     double pot0_3 = pot.ion_potential(z_quad0_3, r_z3r.norm());
     double pot0_4 = pot.ion_potential(z_quad0_4, r_z4r.norm());
     CHECK(pot0 == Approx(pot0_1 + pot0_2 + pot0_3 + pot0_4));
+
+    // Check fields
+    vec3 fie0 = pot.quadrupole_field(quad0, r);
+    vec3 fie0_1 = pot.ion_field(z_quad0_1, r_z1r);
+    vec3 fie0_2 = pot.ion_field(z_quad0_2, r_z2r);
+    vec3 fie0_3 = pot.ion_field(z_quad0_3, r_z3r);
+    vec3 fie0_4 = pot.ion_field(z_quad0_4, r_z4r);
+    CHECK(fie0[0] == Approx(fie0_1[0] + fie0_2[0] + fie0_3[0] + fie0_4[0]));
+    CHECK(fie0[1] == Approx(fie0_1[1] + fie0_2[1] + fie0_3[1] + fie0_4[1]));
+    CHECK(fie0[2] == Approx(fie0_1[2] + fie0_2[2] + fie0_3[2] + fie0_4[2]));
 
     // Check Yukawa-interactions
     double debye_length = 23.0;
@@ -551,10 +566,14 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(E_dipole[0] == Approx(0.002702513754));
     CHECK(E_dipole[1] == Approx(-0.00009210857180));
     CHECK(E_dipole[2] == Approx(-0.0001447420414));
-    vec3 E_multipole = pot43.multipole_field(zA,muA, r);
-    CHECK(E_multipole[0] == Approx(0.0033077986544));
-    CHECK(E_multipole[1] == Approx(-0.00009210857180));
-    CHECK(E_multipole[2] == Approx(-0.0001447420414));
+    vec3 E_quadrupole = pot43.quadrupole_field(quadA, r);
+    CHECK(E_quadrupole[0] == Approx(0.00001919309993));
+    CHECK(E_quadrupole[1] == Approx(-0.00004053806958));
+    CHECK(E_quadrupole[2] == Approx(-0.00003378172465));
+    vec3 E_multipole = pot43.multipole_field(zA,muA,quadA, r);
+    CHECK(E_multipole[0] == Approx(0.003326991754330));
+    CHECK(E_multipole[1] == Approx(-0.00013264664138));
+    CHECK(E_multipole[2] == Approx(-0.00017852376605));
 
     // Test energies
     CHECK(pot43.ion_ion_energy(zA, zB, cutoff) == Approx(0.0));
@@ -564,6 +583,8 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(pot43.ion_dipole_energy(zB, muA, -r) == Approx(0.01725061966));
     CHECK(pot43.dipole_dipole_energy(muA, muB, cutoff * rh) == Approx(0.0));
     CHECK(pot43.dipole_dipole_energy(muA, muB, r) == Approx(-0.03284312288));
+    CHECK(pot43.ion_quadrupole_energy(zB, quadA, rq/23.0*29.0) == Approx(0.0));
+    CHECK(pot43.ion_quadrupole_energy(zB, quadA, rq) == Approx(0.002697684495));
     CHECK(pot43.multipole_multipole_energy(zA, zB, muA, muB, r) == Approx(-0.020632011289000));
 
     // Test forces
@@ -627,10 +648,14 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(E_dipole_Y[0] == Approx(0.004956265485));
     CHECK(E_dipole_Y[1] == Approx(-0.0002585497523));
     CHECK(E_dipole_Y[2] == Approx(-0.0004062924688));
-    vec3 E_multipole_Y = potY.multipole_field(zA,muA, r);
-    CHECK(E_multipole_Y[0] == Approx(0.006655306715));
-    CHECK(E_multipole_Y[1] == Approx(-0.0002585497523));
-    CHECK(E_multipole_Y[2] == Approx(-0.0004062924688));
+    vec3 E_quadrupole_Y = potY.quadrupole_field(quadA, r);
+    CHECK(E_quadrupole_Y[0] == Approx(-0.00005233355205));
+    CHECK(E_quadrupole_Y[1] == Approx(-0.00007768480608));
+    CHECK(E_quadrupole_Y[2] == Approx(-0.00006473733856));
+    vec3 E_multipole_Y = potY.multipole_field(zA,muA,quadA, r);
+    CHECK(E_multipole_Y[0] == Approx(0.006602973162950));
+    CHECK(E_multipole_Y[1] == Approx(-0.00033623455838));
+    CHECK(E_multipole_Y[2] == Approx(-0.00047102980736));
 
     // Test energies
     CHECK(potY.ion_ion_energy(zA, zB, cutoff) == Approx(0.0));
@@ -640,6 +665,8 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(potY.ion_dipole_energy(zB, muA, -r) == Approx(0.04842267505));
     CHECK(potY.dipole_dipole_energy(muA, muB, cutoff * rh) == Approx(0.0));
     CHECK(potY.dipole_dipole_energy(muA, muB, r) == Approx(-0.05800464321));
+    CHECK(potY.ion_quadrupole_energy(zB, quadA, rq/23.0*29.0) == Approx(0.0));
+    CHECK(potY.ion_quadrupole_energy(zB, quadA, rq) == Approx(0.004888412229));
     CHECK(potY.multipole_multipole_energy(zA, zB, muA, muB, r) == Approx(-0.02163684627));
 
     // Test forces

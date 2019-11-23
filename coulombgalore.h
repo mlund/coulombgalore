@@ -561,23 +561,25 @@ class SchemeBase {
     virtual double short_range_function_second_derivative(double q) const = 0;
     virtual double short_range_function_third_derivative(double q) const = 0;
 
+    virtual double ion_potential(double, double) const = 0;
+    virtual double dipole_potential(const vec3 &, const vec3 &) const = 0;
+    virtual double quadrupole_potential(const mat33 &, const vec3 &) const = 0;
+
     virtual double ion_ion_energy(double, double, double) const = 0;
     virtual double ion_dipole_energy(double, const vec3 &, const vec3 &) const = 0;
     virtual double dipole_dipole_energy(const vec3 &, const vec3 &, const vec3 &) const = 0;
+    virtual double ion_quadrupole_energy(double, const mat33 &, const vec3 &) const = 0;
     virtual double multipole_multipole_energy(double, double, const vec3 &, const vec3 &, const vec3 &) const = 0;
 
     virtual vec3 ion_field(double, const vec3 &) const = 0;
     virtual vec3 dipole_field(const vec3 &, const vec3 &) const = 0;
-    virtual vec3 multipole_field(double, const vec3 &, const vec3 &) const = 0;
+    virtual vec3 quadrupole_field(const mat33 &, const vec3 &) const = 0;
+    virtual vec3 multipole_field(double, const vec3 &, const mat33 &, const vec3 &) const = 0;
 
     virtual vec3 ion_ion_force(double, double, const vec3 &) const = 0;
     virtual vec3 ion_dipole_force(double, const vec3 &, const vec3 &) const = 0;
     virtual vec3 dipole_dipole_force(const vec3 &, const vec3 &, const vec3 &) const = 0;
     virtual vec3 multipole_multipole_force(double, double, const vec3 &, const vec3 &, const vec3 &) const = 0;
-
-    virtual double ion_potential(double, double) const = 0;
-    virtual double dipole_potential(const vec3 &, const vec3 &) const = 0;
-    virtual double quadrupole_potential(const mat33 &, const vec3 &) const = 0;
 
     // add remaining funtions here...
 
@@ -759,9 +761,51 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
     }
 
     /**
+     * @brief electrostatic field from point quadrupole
+     * @param quad point quadrupole, UNIT: [ ( input length )^2 x ( input charge ) ]
+     * @param r distance-vector from point quadrupole, UNIT: [ input length ]
+     * @returns field from quadrupole, UNIT: [ ( input charge ) / ( input length )^2 ]
+     *
+     * The field from a point quadrupole is described by
+     * @f[
+     *     {\bf E}(\boldsymbol{Q}, {\bf r}) = ...
+     * @f]
+     * @warning Not tested yet!
+     */
+    inline vec3 quadrupole_field(const mat33 &quad, const vec3 &r) const {
+        double r2 = r.squaredNorm();
+        if (r2 < cutoff2) {
+            double r1 = std::sqrt(r2);
+            vec3 rh = r / r1;
+            double q = r1 * invcutoff;
+            double q2 = q * q;
+            double r4 = r2 * r2;
+            vec3 quadrh = quad*rh;
+            vec3 quadTrh = quad.transpose()*rh;
+	    double quadfactor = 1.0/r2*r.transpose()*quad*r;
+            vec3 fieldD =
+                3.0 * ((5.0 * quadfactor - quad.trace()) * rh - quadrh - quadTrh) / r4;
+            double srf = static_cast<const T *>(this)->short_range_function(q);
+            double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
+            double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
+            double dddsrf = static_cast<const T *>(this)->short_range_function_third_derivative(q);
+            fieldD *= (srf * (1.0 + kappa * r1 + kappa * kappa * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa * r1) +
+                       q2 / 3.0 * ddsrf);
+            vec3 fieldI = quadfactor * rh / r4;
+            fieldI *=
+                (srf * (1.0 + kappa * r1) * kappa * kappa * r2 - q * dsrf * (3.0 * kappa * r1 + 2.0) * kappa * r1 +
+                 ddsrf * (1.0 + 3.0 * kappa * r1) * q2 - q2 * q * dddsrf);
+            return 0.5 * (fieldD + fieldI) * std::exp(-kappa * r1);
+        } else {
+            return {0, 0, 0};
+        }
+    }
+
+    /**
      * @brief electrostatic field from point multipole
      * @param z charge, UNIT: [ input charge ]
      * @param mu dipole, UNIT: [ ( input length ) x ( input charge ) ]
+     * @param quad point quadrupole, UNIT: [ ( input length )^2 x ( input charge ) ]
      * @param r distance-vector from point multipole, UNIT: [ input length ]
      * @returns field from multipole, UNIT: [ ( input charge ) / ( input length )^2 ]
      *
@@ -773,23 +817,29 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
      * \frac{\boldsymbol{\mu}}{|{\bf r}|^3}\frac{q^2}{3}s^{\prime\prime}(q)
      * @f]
      */
-    inline vec3 multipole_field(double z, const vec3 &mu, const vec3 &r) const {
+    inline vec3 multipole_field(double z, const vec3 &mu, const mat33 &quad, const vec3 &r) const {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
+            vec3 rh = r / r1;
             double q = r1 * invcutoff;
-            double r3 = r1 * r2;
             double q2 = q * q;
-            double kappa2 = kappa * kappa;
-            double kappa_x_r1 = kappa * r1;
+            double r3 = r1 * r2;
+            double kappar = kappa * r1;
+            double kappar2 = kappar * kappar;
+            double quadfactor = 1.0/r2*r.transpose()*quad*r;
             double srf = static_cast<const T *>(this)->short_range_function(q);
             double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
             double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
-            vec3 fieldIon = z * r / r3 * ( srf * (1.0 + kappa_x_r1) - q * dsrf ); // field from ion
-            vec3 fieldD = (3.0 * mu.dot(r) * r / r2 - mu) / r3;
-            fieldD *= (srf * (1.0 + kappa_x_r1 + kappa2 * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa_x_r1) + q2 / 3.0 * ddsrf);
-            vec3 fieldI = mu / r3 * (srf * kappa2 * r2 - 2.0 * kappa_x_r1 * q * dsrf + ddsrf * q2) / 3.0;
-            return (fieldD + fieldI + fieldIon) * std::exp(-kappa_x_r1);
+            double dddsrf = static_cast<const T *>(this)->short_range_function_third_derivative(q);
+            vec3 fieldIon = z * r / r3 * ( srf * (1.0 + kappar) - q * dsrf ); // field from ion
+             double postfactor = (srf * (1.0 + kappar + kappar2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappar) + q2 / 3.0 * ddsrf);
+            vec3 fieldDd = (3.0 * mu.dot(r) * r / r2 - mu) / r3 * postfactor;
+            vec3 fieldId = mu / r3 * (srf * kappar2 - 2.0 * kappar * q * dsrf + ddsrf * q2) / 3.0;
+            vec3 fieldDq = 3.0 * ((5.0 * quadfactor - quad.trace()) * rh - quad * rh - quad.transpose() * rh) / r3 / r1 * postfactor;
+            vec3 fieldIq = quadfactor * rh / r3 / r1;
+            fieldIq *= (srf * (1.0 + kappar) * kappar2 - q * dsrf * (3.0 * kappar + 2.0) * kappar + ddsrf * (1.0 + 3.0 * kappar) * q2 - q2 * q * dddsrf);
+            return ( fieldIon + fieldDd + fieldId + 0.5 * (fieldDq + fieldIq) ) * std::exp(-kappar);
         } else {
             return {0, 0, 0};
         }
@@ -850,6 +900,23 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
      */
     inline double dipole_dipole_energy(const vec3 &muA, const vec3 &muB, const vec3 &r) const override {
         return -muA.dot(dipole_field(muB, r));
+    }
+
+    /**
+     * @brief interaction energy between a point charges and a point quadrupole
+     * @param z point charge, UNIT: [ input charge ]
+     * @param quad quadrupole moment, UNIT: [ ( input length )^2 x ( input charge ) ]
+     * @param r distance-vector between quadrupole and charge, @f$ {\bf r} = {\bf r}_{\boldsymbol{Q}} - {\bf r}_z @f$, UNIT: [ input length ]
+     * @returns interaction energy, UNIT: [ ( input charge )^2 / ( input length ) ]
+     *
+     * The interaction energy between an ion and a quadrupole is decribed by
+     * @f[
+     *     u(z, \boldsymbol{Q}, {\bf r}) = z \Phi(\boldsymbol{Q}, -{\bf r})
+     * @f]
+     * where @f$ \Phi(\boldsymbol{Q}, -{\bf r}) @f$ is the potential from the quadrupole at the location of the ion.
+     */
+    inline double ion_quadrupole_energy(double z, const mat33 &quad, const vec3 &r) const override {
+        return z * quadrupole_potential(quad, -r); // potential of quadrupole interacting with charge
     }
 
     /**
