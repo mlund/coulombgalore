@@ -268,6 +268,7 @@ template <typename T = double> class TabulatorBase {
         std::vector<T> c;       // c for coefficents
         T rmin2 = 0, rmax2 = 0; // useful to save these with table
         bool empty() const { return r2.empty() && c.empty(); }
+        inline size_t numKnots() const { return r2.size(); }
     };
 
     void setTolerance(T _utol, T _ftol = -1, T _umaxtol = -1, T _fmaxtol = -1) {
@@ -1053,7 +1054,7 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
 class Plain : public EnergyImplementation<Plain> {
   public:
     inline Plain(double debye_length = infinity)
-        : EnergyImplementation(Scheme::plain, std::numeric_limits<double>::max(), debye_length) {
+        : EnergyImplementation(Scheme::plain, std::sqrt(std::numeric_limits<double>::max()), debye_length) {
         name = "plain";
         dipolar_selfenergy = true;
         doi = "Premier mémoire sur l’électricité et le magnétisme by Charles-Augustin de Coulomb"; // :P
@@ -1969,7 +1970,6 @@ class Splined : public EnergyImplementation<Splined> {
     inline void generate_spline_data() {
         assert(pot);
         SchemeBase::operator=(*pot); // copy base data from pot -> Splined
-        splined_srf.setTolerance(1e-3, 1e-1);
         splinedata[0] = splined_srf.generate([pot = pot](double q) { return pot->short_range_function(q); }, 0, 1);
         splinedata[1] =
             splined_srf.generate([pot = pot](double q) { return pot->short_range_function_derivative(q); }, 0, 1);
@@ -1980,7 +1980,26 @@ class Splined : public EnergyImplementation<Splined> {
     }
 
   public:
-    inline Splined() : EnergyImplementation<Splined>(Scheme::spline, infinity) {}
+    inline Splined() : EnergyImplementation<Splined>(Scheme::spline, infinity) {
+        setTolerance(1e-3);
+    }
+
+    /**
+     * @brief Returns vector with number of spline knots the short-range-function and its derivatives
+     */
+    inline std::vector<size_t> numKnots() const {
+        std::vector<size_t> n;
+        for (auto &i : splinedata)
+            n.push_back( i.numKnots() );
+        return n;
+    }
+
+    /**
+     * @brief Set relative spline tolerance
+     */
+    inline void setTolerance(double tol) {
+        splined_srf.setTolerance(tol);
+    }
 
     /**
      * @brief Spline given potential type
