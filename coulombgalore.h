@@ -569,7 +569,7 @@ class SchemeBase {
     virtual double ion_dipole_energy(double, const vec3 &, const vec3 &) const = 0;
     virtual double dipole_dipole_energy(const vec3 &, const vec3 &, const vec3 &) const = 0;
     virtual double ion_quadrupole_energy(double, const mat33 &, const vec3 &) const = 0;
-    virtual double multipole_multipole_energy(double, double, const vec3 &, const vec3 &, const vec3 &) const = 0;
+    virtual double multipole_multipole_energy(double, double, const vec3 &, const vec3 &, const mat33 &, const mat33 &, const vec3 &) const = 0;
 
     virtual vec3 ion_field(double, const vec3 &) const = 0;
     virtual vec3 dipole_field(const vec3 &, const vec3 &) const = 0;
@@ -579,7 +579,8 @@ class SchemeBase {
     virtual vec3 ion_ion_force(double, double, const vec3 &) const = 0;
     virtual vec3 ion_dipole_force(double, const vec3 &, const vec3 &) const = 0;
     virtual vec3 dipole_dipole_force(const vec3 &, const vec3 &, const vec3 &) const = 0;
-    virtual vec3 multipole_multipole_force(double, double, const vec3 &, const vec3 &, const vec3 &) const = 0;
+    virtual vec3 ion_quadrupole_force(double, const mat33 &, const vec3 &) const = 0;
+    virtual vec3 multipole_multipole_force(double, double, const vec3 &, const vec3 &, const mat33 &, const mat33 &, const vec3 &) const = 0;
 
     // add remaining funtions here...
 
@@ -660,10 +661,11 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
             double q = r1 * invcutoff;
+            double kr = kappa * r1;
             return mu.dot(r) / (r2 * r1) *
-                   (static_cast<const T *>(this)->short_range_function(q) * (1.0 + kappa * r1) -
+                   (static_cast<const T *>(this)->short_range_function(q) * (1.0 + kr) -
                     q * static_cast<const T *>(this)->short_range_function_derivative(q)) *
-                   std::exp(-kappa * r1);
+                   std::exp(-kr);
         } else {
             return 0.0;
         }
@@ -686,14 +688,14 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
             double r1 = std::sqrt(r2);
             double q = r1 * invcutoff;
             double q2 = q * q;
-            double kappa2 = kappa * kappa;
-            double kappa_x_r1 = kappa * r1;
+            double kr = kappa * r1;
+            double kr2 = kr * kr;
             double srf = static_cast<const T *>(this)->short_range_function(q);
             double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
             double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
 
-            double a = (srf * (1.0 + kappa_x_r1 + kappa2 * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa_x_r1) + q2 / 3.0 * ddsrf);
-            double b = (srf * kappa2 * r2 - 2.0 * kappa_x_r1 * q * dsrf + ddsrf * q2) / 3.0;
+            double a = (srf * (1.0 + kr + kr2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kr) + q2 / 3.0 * ddsrf);
+            double b = (srf * kr2 - 2.0 * kr * q * dsrf + ddsrf * q2) / 3.0;
             return 0.5 * ( ( 3.0/r2*r.transpose()*quad*r - quad.trace() ) * a + quad.trace() * b ) / r2 / r1 * std::exp(-kappa * r1);
         } else {
             return 0.0;
@@ -716,10 +718,11 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
             double q = r1 * invcutoff;
+            double kr = kappa * r1;
             return z * r / (r2 * r1) *
-                   (static_cast<const T *>(this)->short_range_function(q) * (1.0 + kappa * r1) -
+                   (static_cast<const T *>(this)->short_range_function(q) * (1.0 + kr) -
                     q * static_cast<const T *>(this)->short_range_function_derivative(q)) *
-                   std::exp(-kappa * r1);
+                   std::exp(-kr);
         } else {
             return {0, 0, 0};
         }
@@ -745,16 +748,16 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
             double r3 = r1 * r2;
             double q = r1 * invcutoff;
             double q2 = q * q;
-            double kappa2 = kappa * kappa;
-            double kappa_x_r1 = kappa * r1;
+            double kr = kappa * r1;
+            double kr2 = kr * kr;
             double srf = static_cast<const T *>(this)->short_range_function(q);
             double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
             double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
             vec3 fieldD = (3.0 * mu.dot(r) * r / r2 - mu) / r3;
-            fieldD *= (srf * (1.0 + kappa_x_r1 + kappa2 * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa_x_r1) +
+            fieldD *= (srf * (1.0 + kr + kr2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kr) +
                        q2 / 3.0 * ddsrf);
-            vec3 fieldI = mu / r3 * (srf * kappa2 * r2 - 2.0 * kappa_x_r1 * q * dsrf + ddsrf * q2) / 3.0;
-            return (fieldD + fieldI) * std::exp(-kappa_x_r1);
+            vec3 fieldI = mu / r3 * (srf * kr2 - 2.0 * kr * q * dsrf + ddsrf * q2) / 3.0;
+            return (fieldD + fieldI) * std::exp(-kr);
         } else {
             return {0, 0, 0};
         }
@@ -770,7 +773,6 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
      * @f[
      *     {\bf E}(\boldsymbol{Q}, {\bf r}) = ...
      * @f]
-     * @warning Not tested yet!
      */
     inline vec3 quadrupole_field(const mat33 &quad, const vec3 &r) const {
         double r2 = r.squaredNorm();
@@ -779,6 +781,8 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
             vec3 rh = r / r1;
             double q = r1 * invcutoff;
             double q2 = q * q;
+            double kr = kappa * r1;
+            double kr2 = kr * kr;
             double r4 = r2 * r2;
             vec3 quadrh = quad*rh;
             vec3 quadTrh = quad.transpose()*rh;
@@ -789,13 +793,10 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
             double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
             double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
             double dddsrf = static_cast<const T *>(this)->short_range_function_third_derivative(q);
-            fieldD *= (srf * (1.0 + kappa * r1 + kappa * kappa * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa * r1) +
-                       q2 / 3.0 * ddsrf);
+            fieldD *= (srf * (1.0 + kr + kr2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kr) + q2 / 3.0 * ddsrf);
             vec3 fieldI = quadfactor * rh / r4;
-            fieldI *=
-                (srf * (1.0 + kappa * r1) * kappa * kappa * r2 - q * dsrf * (3.0 * kappa * r1 + 2.0) * kappa * r1 +
-                 ddsrf * (1.0 + 3.0 * kappa * r1) * q2 - q2 * q * dddsrf);
-            return 0.5 * (fieldD + fieldI) * std::exp(-kappa * r1);
+            fieldI *= (srf * (1.0 + kr) * kr2 - q * dsrf * (3.0 * kr + 2.0) * kr + ddsrf * (1.0 + 3.0 * kr) * q2 - q2 * q * dddsrf);
+            return 0.5 * (fieldD + fieldI) * std::exp(-kr);
         } else {
             return {0, 0, 0};
         }
@@ -825,21 +826,21 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
             double q = r1 * invcutoff;
             double q2 = q * q;
             double r3 = r1 * r2;
-            double kappar = kappa * r1;
-            double kappar2 = kappar * kappar;
+            double kr = kappa * r1;
+            double kr2 = kr * kr;
             double quadfactor = 1.0/r2*r.transpose()*quad*r;
             double srf = static_cast<const T *>(this)->short_range_function(q);
             double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
             double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
             double dddsrf = static_cast<const T *>(this)->short_range_function_third_derivative(q);
-            vec3 fieldIon = z * r / r3 * ( srf * (1.0 + kappar) - q * dsrf ); // field from ion
-             double postfactor = (srf * (1.0 + kappar + kappar2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappar) + q2 / 3.0 * ddsrf);
+            vec3 fieldIon = z * r / r3 * ( srf * (1.0 + kr) - q * dsrf ); // field from ion
+             double postfactor = (srf * (1.0 + kr + kr2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kr) + q2 / 3.0 * ddsrf);
             vec3 fieldDd = (3.0 * mu.dot(r) * r / r2 - mu) / r3 * postfactor;
-            vec3 fieldId = mu / r3 * (srf * kappar2 - 2.0 * kappar * q * dsrf + ddsrf * q2) / 3.0;
+            vec3 fieldId = mu / r3 * (srf * kr2 - 2.0 * kr * q * dsrf + ddsrf * q2) / 3.0;
             vec3 fieldDq = 3.0 * ((5.0 * quadfactor - quad.trace()) * rh - quad * rh - quad.transpose() * rh) / r3 / r1 * postfactor;
             vec3 fieldIq = quadfactor * rh / r3 / r1;
-            fieldIq *= (srf * (1.0 + kappar) * kappar2 - q * dsrf * (3.0 * kappar + 2.0) * kappar + ddsrf * (1.0 + 3.0 * kappar) * q2 - q2 * q * dddsrf);
-            return ( fieldIon + fieldDd + fieldId + 0.5 * (fieldDq + fieldIq) ) * std::exp(-kappar);
+            fieldIq *= (srf * (1.0 + kr) * kr2 - q * dsrf * (3.0 * kr + 2.0) * kr + ddsrf * (1.0 + 3.0 * kr) * q2 - q2 * q * dddsrf);
+            return ( fieldIon + fieldDd + fieldId + 0.5 * (fieldDq + fieldIq) ) * std::exp(-kr);
         } else {
             return {0, 0, 0};
         }
@@ -925,33 +926,39 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
      * @param zB point charge of particle B, UNIT: [ input charge ]
      * @param muA point dipole moment of particle A, UNIT: [ ( input length ) x ( input charge ) ]
      * @param muB point dipole moment of particle B, UNIT: [ ( input length ) x ( input charge ) ]
+     * @param quadA point quadrupole of particle A, UNIT: [ ( input length )^2 x ( input charge ) ]
+     * @param quadB point quadrupole of particle B, UNIT: [ ( input length )^2 x ( input charge ) ]
      * @param r distance-vector between dipoles, @f$ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f$, UNIT: [ input length ]
      * @returns interaction energy, UNIT: [ ( input charge )^2 / ( input length ) ]
      *
-     * A combination of the functions 'ion_ion_energy', 'ion_dipole_energy' and 'dipole_dipole_energy'.
+     * A combination of the functions 'ion_ion_energy', 'ion_dipole_energy', 'dipole_dipole_energy' and 'ion_quadrupole_energy'.
      */
-    inline double multipole_multipole_energy(double zA, double zB, const vec3 &muA, const vec3 &muB,
+    inline double multipole_multipole_energy(double zA, double zB, const vec3 &muA, const vec3 &muB, const mat33 &quadA, const mat33 &quadB,
                                              const vec3 &r) const override {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
-            double r3 = r1 * r2;
             double q = r1 / cutoff;
-            double kappa_r1 = kappa * r1;
+            double kr = kappa * r1;
+            double quadAtrace = quadA.trace();
+            double quadBtrace = quadB.trace();
 
             double srf = static_cast<const T *>(this)->short_range_function(q);
             double dsrfq = static_cast<const T *>(this)->short_range_function_derivative(q) * q;
             double ddsrfq2 = static_cast<const T *>(this)->short_range_function_second_derivative(q) * q * q / 3.0;
 
-            double tmp1 = (srf * (1.0 + kappa_r1) - dsrfq) / r3;
-            double tmp2 = (srf * kappa_r1 * kappa_r1 / 3.0 - dsrfq * (2.0 / 3.0 * kappa_r1) + ddsrfq2) / r3;
+            double angcor = (srf * (1.0 + kr) - dsrfq);
+            double unicor = (srf * kr * kr / 3.0 - 2.0 / 3.0 * dsrfq * kr + ddsrfq2);
+	    double muBdotr = muB.dot(r);
+            vec3 field_dipoleB = (3.0 * muBdotr * r / r2 - muB) * (angcor + unicor) + muB * unicor;
 
-            vec3 field_dipoleB = (3.0 * muB.dot(r) * r / r2 - muB) * (tmp1 + tmp2) + muB * tmp2;
+            double ion_ion = zA * zB * srf * r2; // will later be divided by r3
+            double ion_dipole = (zB * muA.dot(r) - zA * muBdotr) * angcor; // will later be divided by r3
+            double dipole_dipole = -muA.dot(field_dipoleB); // will later be divided by r3
+            double ion_quadrupole = zA * 0.5 * ( ( 3.0/r2*r.transpose()*quadB*r - quadBtrace ) * (angcor + unicor) + quadBtrace * unicor ); // will later be divided by r3
+            ion_quadrupole += zB * 0.5 * ( ( 3.0/r2*r.transpose()*quadA*r - quadAtrace ) * (angcor + unicor) + quadAtrace * unicor );
 
-            double ion_ion = zA * zB / r1 * srf;
-            double ion_dipole = (zB * muA.dot(r) + zA * muB.dot(-r)) * tmp1;
-            double dipole_dipole = -muA.dot(field_dipoleB);
-            return (ion_ion + ion_dipole + dipole_dipole) * std::exp(-kappa_r1);
+            return (ion_ion + ion_dipole + dipole_dipole + ion_quadrupole) * std::exp(-kr) / r2 / r1;
         } else {
             return 0.0;
         }
@@ -1022,6 +1029,7 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
             vec3 rh = r / r1;
             double q = r1 * invcutoff;
             double q2 = q * q;
+            double kr = kappa * r1;
             double r4 = r2 * r2;
             double muAdotRh = muA.dot(rh);
             double muBdotRh = muB.dot(rh);
@@ -1031,17 +1039,29 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
             double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
             double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
             double dddsrf = static_cast<const T *>(this)->short_range_function_third_derivative(q);
-            forceD *= (srf * (1.0 + kappa * r1 + kappa * kappa * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa * r1) +
-                       q2 / 3.0 * ddsrf);
+            forceD *= (srf * (1.0 + kr + kr * kr / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kr) + q2 / 3.0 * ddsrf);
             vec3 forceI = muAdotRh * muBdotRh * rh / r4;
-            forceI *=
-                (srf * (1.0 + kappa * r1) * kappa * kappa * r2 - q * dsrf * (3.0 * kappa * r1 + 2.0) * kappa * r1 +
-                 ddsrf * (1.0 + 3.0 * kappa * r1) * q2 - q2 * q * dddsrf);
-            return (forceD + forceI) * std::exp(-kappa * r1);
+            forceI *= (srf * (1.0 + kr) * kr * kr - q * dsrf * (3.0 * kr + 2.0) * kr + ddsrf * (1.0 + 3.0 * kr) * q2 - q2 * q * dddsrf);
+            return (forceD + forceI) * std::exp(-kr);
         } else {
             return {0, 0, 0};
         }
     }
+
+    /**
+     * @brief interaction force between a point charge and a point quadrupole
+     * @param z point charge, UNIT: [ input charge ]
+     * @param quad point quadrupole, UNIT: [ ( input length )^2 x ( input charge ) ]
+     * @param r distance-vector between particles, @f$ {\bf r} = {\bf r}_{Q} - {\bf r}_{z} @f$, UNIT: [ input length ]
+     * @returns interaction force, UNIT: [ ( input charge )^2 / ( input length )^2 ]
+     *
+     * The force between a point charge and a point quadrupole is described by
+     * @f[
+     *     {\bf F}(z, Q, {\bf r}) = z {\bf E}(Q, {\bf r})
+     * @f]
+     * where @f$ {\bf E}(Q, {\bf r}) @f$ is the field from the quadrupole at the location of the ion.
+     */
+    inline vec3 ion_quadrupole_force(double z, const mat33 &quad, const vec3 &r) const override { return z * quadrupole_field(quad, r); }
 
     /**
      * @brief interaction force between two point multipoles
@@ -1049,12 +1069,14 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
      * @param zB charge of particle B, UNIT: [ input charge ]
      * @param muA dipole moment of particle A, UNIT: [ ( input length ) x ( input charge ) ]
      * @param muB dipole moment of particle B, UNIT: [ ( input length ) x ( input charge ) ]
+     * @param quadA point quadrupole of particle A, UNIT: [ ( input length )^2 x ( input charge ) ]
+     * @param quadB point quadrupole of particle B, UNIT: [ ( input length )^2 x ( input charge ) ]
      * @param r distance-vector between dipoles, @f[ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f], UNIT: [ input length ]
      * @returns interaction force, UNIT: [ ( input charge )^2 / ( input length )^2 ]
      *
-     * @details A combination of the functions 'ion_ion_force', 'ion_dipole_force' and 'dipole_dipole_force'.
+     * @details A combination of the functions 'ion_ion_force', 'ion_dipole_force', 'dipole_dipole_force' and 'ion_quadrupole_force'.
      */
-    inline vec3 multipole_multipole_force(double zA, double zB, const vec3 &muA, const vec3 &muB,
+    inline vec3 multipole_multipole_force(double zA, double zB, const vec3 &muA, const vec3 &muB, const mat33 &quadA, const mat33 &quadB,
                                           const vec3 &r) const override {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
@@ -1068,26 +1090,28 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
 
             double srf = static_cast<const T *>(this)->short_range_function(q);
             double dsrfq = static_cast<const T *>(this)->short_range_function_derivative(q) * q;
-            double ddsrfq2 = static_cast<const T *>(this)->short_range_function_second_derivative(q) * q2;
+            double ddsrfq2 = static_cast<const T *>(this)->short_range_function_second_derivative(q) * q2 / 3.0;
             double dddsrfq3 = static_cast<const T *>(this)->short_range_function_third_derivative(q) * q2 * q;
 
-            double tmp0 = (srf * (1.0 + kr) - dsrfq);
-            double tmp1 = (srf * kr * kr - 2.0 * kr * dsrfq + ddsrfq2) / 3.0;
-            double tmp2 = tmp1 + tmp0;
-            double tmp3 = (srf * (1.0 + kr) * kr * kr - dsrfq * (2.0 * (1.0 + kr) + kr) * kr +
-                           ddsrfq2 * (1.0 + 3.0 * kr) - dddsrfq3) /
-                          r1;
+            double angcor = (srf * (1.0 + kr) - dsrfq);
+            double unicor = (srf * kr - 2.0 * dsrfq) * kr / 3.0 + ddsrfq2;
+            double totcor = unicor + angcor;
+	    double r3corr = ( angcor * kr * kr - dsrfq * 2.0 * (1.0 + kr) * kr + 3.0 * ddsrfq2 * (1.0 + 3.0 * kr) - dddsrfq3);
 
-            vec3 ion_ion = zB * zA * r * (srf * (1.0 + kr) - dsrfq);
-            // vec3 ion_ion = zB * zA * r * tmp0;
+            vec3 ion_ion = zB * zA * r * angcor * r1;
+            vec3 ion_dipole = zA * ((3.0 * muBdotRh * rh - muB) * totcor + muB * unicor);
+            ion_dipole += zB * ((3.0 * muAdotRh * rh - muA) * totcor + muA * unicor);
+            ion_dipole *= r1;
+            vec3 forceD = 3.0 * ((5.0 * muAdotRh * muBdotRh - muA.dot(muB)) * rh - muBdotRh * muA - muAdotRh * muB) * totcor;
+            vec3 dipole_dipole = (forceD + muAdotRh * muBdotRh * rh * r3corr);
+            double quadfactor = 1.0/r2*r.transpose()*quadB*r;
+            vec3 fieldD = 3.0 * (-(5.0 * quadfactor - quadB.trace()) * rh + quadB*rh + quadB.transpose()*rh) * totcor;
+            vec3 ion_quadrupole = zA * 0.5 * (fieldD - quadfactor * rh * r3corr);
+            quadfactor = 1.0/r2*r.transpose()*quadA*r;
+            fieldD = 3.0 * ((5.0 * quadfactor - quadA.trace()) * rh - quadA*rh - quadA.transpose()*rh) * totcor;
+            ion_quadrupole += zB * 0.5 * (fieldD + quadfactor * rh * r3corr);
 
-            vec3 ion_dipoleA = zA * ((3.0 * muBdotRh * rh - muB) * tmp2 + muB * tmp1);
-            vec3 ion_dipoleB = zB * ((3.0 * muAdotRh * rh - muA) * tmp2 + muA * tmp1);
-
-            vec3 forceD =
-                3.0 * ((5.0 * muAdotRh * muBdotRh - muA.dot(muB)) * rh - muBdotRh * muA - muAdotRh * muB) * tmp2 / r1;
-            vec3 dipole_dipole = (forceD + muAdotRh * muBdotRh * rh * tmp3);
-            return (ion_ion + ion_dipoleA + ion_dipoleB + dipole_dipole) * std::exp(-kr) / r2 / r1;
+            return (ion_ion + ion_dipole + dipole_dipole + ion_quadrupole) * std::exp(-kr) / r2 / r2;
         } else {
             return {0, 0, 0};
         }
@@ -1218,8 +1242,8 @@ class Ewald : public EnergyImplementation<Ewald> {
         beta3 = beta2 * beta;
         self_energy_prefactor = {
             -alphaRed / pi_sqrt * (std::exp(-beta2) - pi_sqrt * beta * std::erfc(beta)),
-            -alphaRed3 * 2.0 / 3.0 / pi_sqrt *
-                (2.0 * pi_sqrt * beta3 * std::erfc(beta) + (1.0 - 2.0 * beta2) * std::exp(-beta2))};
+            -alphaRed3 / pi_sqrt * 2.0 / 3.0 *
+                (2.0 * pi_sqrt * beta3 * std::erfc(beta) + (1.0 - 2.0 * beta2) * std::exp(-beta2))}; // ion-quadrupole self-energy term: 4.0 / 9.0 * alphaRed3 / pi_sqrt
     }
 
     inline double short_range_function(double q) const override {
