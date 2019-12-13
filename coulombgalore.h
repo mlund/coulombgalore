@@ -371,6 +371,7 @@ template <typename T = double> class Andrea : public TabulatorBase<T> {
      * @param r2 value
      */
     inline T eval(const typename base::data &d, T r2) const {
+        assert(r2!=0); // r2 cannot be *exactly* zero
         size_t pos = std::lower_bound(d.r2.begin(), d.r2.end(), r2) - d.r2.begin() - 1;
         size_t pos6 = 6 * pos;
         assert((pos6 + 5) < d.c.size() && "out of bounds");
@@ -677,7 +678,7 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
      *     {\bf E}(z, {\bf r}) = \frac{z \hat{{\bf r}} }{|{\bf r}|^2} \left( s(q) - qs^{\prime}(q) \right)
      * @f].
      */
-    inline vec3 ion_field(double z, const vec3 &r) const {
+    inline vec3 ion_field(double z, const vec3 &r) const override {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
@@ -704,7 +705,7 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
      * \frac{\boldsymbol{\mu}}{|{\bf r}|^3}\frac{q^2}{3}s^{\prime\prime}(q)
      * @f]
      */
-    inline vec3 dipole_field(const vec3 &mu, const vec3 &r) const {
+    inline vec3 dipole_field(const vec3 &mu, const vec3 &r) const override {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
@@ -741,7 +742,7 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
      * \frac{\boldsymbol{\mu}}{|{\bf r}|^3}\frac{q^2}{3}s^{\prime\prime}(q)
      * @f]
      */
-    inline vec3 multipole_field(double z, const vec3 &mu, const vec3 &r) const {
+    inline vec3 multipole_field(double z, const vec3 &mu, const vec3 &r) const override {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
@@ -1087,7 +1088,7 @@ class Ewald : public EnergyImplementation<Ewald> {
     double alpha, alpha2;                  //!< Damping-parameter
     double alphaRed, alphaRed2, alphaRed3; //!< Reduced damping-parameter, and squared
     double eps_sur;                        //!< Dielectric constant of the surrounding medium
-    double debye_length;                   //!< Debye-length
+    //double debye_length;                   //!< Debye-length
     double kappa, kappa2;                  //!< Inverse Debye-length
     double beta, beta2, beta3;             //!< Inverse ( twice Debye-length times damping-parameter )
     const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
@@ -1278,9 +1279,9 @@ class ReactionField : public EnergyImplementation<ReactionField> {
         name = "Reaction-field";
         dipolar_selfenergy = true;
         doi = "10.1080/00268977300102101";
-        epsRF = epsRF;
-        epsr = epsr;
-        shifted = shifted;
+        //epsRF = epsRF;
+        //epsr = epsr;
+        //shifted = shifted;
         self_energy_prefactor = {-3.0 * epsRF * double(shifted) / (4.0 * epsRF + 2.0 * epsr),
                                  -(2.0 * epsRF - 2.0 * epsr) / (2.0 * (2.0 * epsRF + epsr))};
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
