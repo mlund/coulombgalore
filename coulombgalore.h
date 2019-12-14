@@ -32,6 +32,11 @@
 #include <array>
 #include <Eigen/Core>
 
+/** modern json for c++ added "_" suffix at around ~version 3.6 */
+#ifdef NLOHMANN_JSON_HPP_
+#define NLOHMANN_JSON_HPP
+#endif
+
 /** Namespace containing all of CoulombGalore */
 namespace CoulombGalore {
 
