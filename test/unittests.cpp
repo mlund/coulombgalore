@@ -742,6 +742,57 @@ TEST_CASE("[CoulombGalore] Splined") {
     double cutoff = 29.0; // cutoff distance
     Splined pot;
 
+    SUBCASE("Plain") {
+        double zA = 2.0;        // charge
+        double zB = 3.0;        // charge
+        vec3 muA = {19, 7, 11}; // dipole moment
+        vec3 muB = {13, 17, 5}; // dipole moment
+        vec3 r = {23, 0, 0};    // distance vector
+        vec3 rh = {1, 0, 0};    // normalized distance vector
+        pot.spline<Plain>();
+
+        // Test self energy
+        CHECK(pot.self_energy({zA * zB, muA.norm() * muB.norm()}) == Approx(0.0));
+
+        // Test short-ranged function
+        CHECK(pot.short_range_function(0.5) == Approx(1.0));
+        CHECK(pot.short_range_function_derivative(0.5) == Approx(0.0));
+        CHECK(pot.short_range_function_second_derivative(0.5) == Approx(0.0));
+        CHECK(pot.short_range_function_third_derivative(0.5) == Approx(0.0));
+
+        testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
+
+        // Test potentials
+        CHECK(pot.ion_potential(zA, cutoff + 1.0) == Approx(0.06666666667));
+        CHECK(pot.ion_potential(zA, r.norm()) == Approx(0.08695652174));
+        CHECK(pot.dipole_potential(muA, (cutoff + 1.0) * rh) == Approx(0.02111111111));
+        CHECK(pot.dipole_potential(muA, r) == Approx(0.03591682420));
+
+        // Test energies
+        CHECK(pot.ion_ion_energy(zA, zB, (cutoff + 1.0)) == Approx(0.2));
+        CHECK(pot.ion_ion_energy(zA, zB, r.norm()) == Approx(0.2608695652));
+        CHECK(pot.ion_dipole_energy(zA, muB, (cutoff + 1.0) * rh) == Approx(-0.02888888889));
+        CHECK(pot.ion_dipole_energy(zA, muB, r) == Approx(-0.04914933837));
+        CHECK(pot.dipole_dipole_energy(muA, muB, (cutoff + 1.0) * rh) == Approx(-0.01185185185));
+        CHECK(pot.dipole_dipole_energy(muA, muB, r) == Approx(-0.02630064930));
+
+        // Test forces
+        CHECK(pot.ion_ion_force(zA, zB, (cutoff + 1.0) * rh).norm() == Approx(0.006666666667));
+        vec3 F_ionion = pot.ion_ion_force(zA, zB, r);
+        CHECK(F_ionion[0] == Approx(0.01134215501));
+        CHECK(F_ionion.norm() == Approx(0.01134215501));
+        CHECK(pot.ion_dipole_force(zB, muA, (cutoff + 1.0) * rh).norm() == Approx(0.004463846540));
+        vec3 F_iondipole = pot.ion_dipole_force(zB, muA, r);
+        CHECK(F_iondipole[0] == Approx(0.009369606312));
+        CHECK(F_iondipole[1] == Approx(-0.001725980110));
+        CHECK(F_iondipole[2] == Approx(-0.002712254459));
+        CHECK(pot.dipole_dipole_force(muA, muB, (cutoff + 1.0) * rh).norm() == Approx(0.002129033733));
+        vec3 F_dipoledipole = pot.dipole_dipole_force(muA, muB, r);
+        CHECK(F_dipoledipole[0] == Approx(0.003430519474));
+        CHECK(F_dipoledipole[1] == Approx(-0.004438234569));
+        CHECK(F_dipoledipole[2] == Approx(-0.002551448858));
+    }
+
     SUBCASE("Wolf") {
         double alpha = 0.1; // damping-parameter
         pot.spline<Wolf>(alpha, cutoff);
