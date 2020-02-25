@@ -33,6 +33,7 @@
 #include <functional>
 #include <memory>
 #include <Eigen/Core>
+#include "Faddeeva.hh"
 
 /** modern json for c++ added "_" suffix at around ~version 3.6 */
 #ifdef NLOHMANN_JSON_HPP_
@@ -44,6 +45,7 @@ namespace CoulombGalore {
 
 /** Typedef for 3D vector such a position or dipole moment */
 typedef Eigen::Vector3d vec3;
+typedef Eigen::Matrix3d mat33;
 
 constexpr double infinity = std::numeric_limits<double>::infinity(); //!< Numerical infinity
 
@@ -51,6 +53,7 @@ constexpr double infinity = std::numeric_limits<double>::infinity(); //!< Numeri
 enum class Scheme {
     plain,
     ewald,
+    ewaldt,
     reactionfield,
     wolf,
     poisson,
@@ -584,22 +587,26 @@ class SchemeBase {
     virtual double short_range_function_second_derivative(double q) const = 0;
     virtual double short_range_function_third_derivative(double q) const = 0;
 
+    virtual double ion_potential(double, double) const = 0;
+    virtual double dipole_potential(const vec3 &, const vec3 &) const = 0;
+    virtual double quadrupole_potential(const mat33 &, const vec3 &) const = 0;
+
     virtual double ion_ion_energy(double, double, double) const = 0;
     virtual double ion_dipole_energy(double, const vec3 &, const vec3 &) const = 0;
     virtual double dipole_dipole_energy(const vec3 &, const vec3 &, const vec3 &) const = 0;
-    virtual double multipole_multipole_energy(double, double, const vec3 &, const vec3 &, const vec3 &) const = 0;
+    virtual double ion_quadrupole_energy(double, const mat33 &, const vec3 &) const = 0;
+    virtual double multipole_multipole_energy(double, double, const vec3 &, const vec3 &, const mat33 &, const mat33 &, const vec3 &) const = 0;
 
     virtual vec3 ion_field(double, const vec3 &) const = 0;
     virtual vec3 dipole_field(const vec3 &, const vec3 &) const = 0;
-    virtual vec3 multipole_field(double, const vec3 &, const vec3 &) const = 0;
+    virtual vec3 quadrupole_field(const mat33 &, const vec3 &) const = 0;
+    virtual vec3 multipole_field(double, const vec3 &, const mat33 &, const vec3 &) const = 0;
 
     virtual vec3 ion_ion_force(double, double, const vec3 &) const = 0;
     virtual vec3 ion_dipole_force(double, const vec3 &, const vec3 &) const = 0;
     virtual vec3 dipole_dipole_force(const vec3 &, const vec3 &, const vec3 &) const = 0;
-    virtual vec3 multipole_multipole_force(double, double, const vec3 &, const vec3 &, const vec3 &) const = 0;
-
-    virtual double ion_potential(double, double) const = 0;
-    virtual double dipole_potential(const vec3 &, const vec3 &) const = 0;
+    virtual vec3 ion_quadrupole_force(double, const mat33 &, const vec3 &) const = 0;
+    virtual vec3 multipole_multipole_force(double, double, const vec3 &, const vec3 &, const mat33 &, const mat33 &, const vec3 &) const = 0;
 
     // add remaining funtions here...
 
@@ -679,10 +686,42 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
             double q = r1 * invcutoff;
+            double kr = kappa * r1;
             return mu.dot(r) / (r2 * r1) *
-                   (static_cast<const T *>(this)->short_range_function(q) * (1.0 + kappa * r1) -
+                   (static_cast<const T *>(this)->short_range_function(q) * (1.0 + kr) -
                     q * static_cast<const T *>(this)->short_range_function_derivative(q)) *
-                   std::exp(-kappa * r1);
+                   std::exp(-kr);
+        } else {
+            return 0.0;
+        }
+    }
+
+    /**
+     * @brief electrostatic potential from point dipole
+     * @param quad quadrupole moment (not necessarily traceless), UNIT: [ ( input length )^2 x ( input charge ) ]
+     * @param r distance vector from dipole, UNIT: [ input length ]
+     * @returns quadrupole potential, UNIT: [ ( input charge ) / ( input length ) ]
+     *
+     * The potential from a point quadrupole is described by
+     * @f[
+     *     \Phi(\boldsymbol{Q}, {\bf r}) = \frac{1}{2}...
+     * @f]
+     */
+    inline double quadrupole_potential(const mat33 &quad, const vec3 &r) const override {
+        double r2 = r.squaredNorm();
+        if (r2 < cutoff2) {
+            double r1 = std::sqrt(r2);
+            double q = r1 * invcutoff;
+            double q2 = q * q;
+            double kr = kappa * r1;
+            double kr2 = kr * kr;
+            double srf = static_cast<const T *>(this)->short_range_function(q);
+            double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
+            double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
+
+            double a = (srf * (1.0 + kr + kr2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kr) + q2 / 3.0 * ddsrf);
+            double b = (srf * kr2 - 2.0 * kr * q * dsrf + ddsrf * q2) / 3.0;
+            return 0.5 * ( ( 3.0/r2*r.transpose()*quad*r - quad.trace() ) * a + quad.trace() * b ) / r2 / r1 * std::exp(-kappa * r1);
         } else {
             return 0.0;
         }
@@ -704,10 +743,11 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
             double q = r1 * invcutoff;
+            double kr = kappa * r1;
             return z * r / (r2 * r1) *
-                   (static_cast<const T *>(this)->short_range_function(q) * (1.0 + kappa * r1) -
+                   (static_cast<const T *>(this)->short_range_function(q) * (1.0 + kr) -
                     q * static_cast<const T *>(this)->short_range_function_derivative(q)) *
-                   std::exp(-kappa * r1);
+                   std::exp(-kr);
         } else {
             return {0, 0, 0};
         }
@@ -733,16 +773,55 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
             double r3 = r1 * r2;
             double q = r1 * invcutoff;
             double q2 = q * q;
-            double kappa2 = kappa * kappa;
-            double kappa_x_r1 = kappa * r1;
+            double kr = kappa * r1;
+            double kr2 = kr * kr;
             double srf = static_cast<const T *>(this)->short_range_function(q);
             double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
             double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
             vec3 fieldD = (3.0 * mu.dot(r) * r / r2 - mu) / r3;
-            fieldD *= (srf * (1.0 + kappa_x_r1 + kappa2 * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa_x_r1) +
+            fieldD *= (srf * (1.0 + kr + kr2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kr) +
                        q2 / 3.0 * ddsrf);
-            vec3 fieldI = mu / r3 * (srf * kappa2 * r2 - 2.0 * kappa_x_r1 * q * dsrf + ddsrf * q2) / 3.0;
-            return (fieldD + fieldI) * std::exp(-kappa_x_r1);
+            vec3 fieldI = mu / r3 * (srf * kr2 - 2.0 * kr * q * dsrf + ddsrf * q2) / 3.0;
+            return (fieldD + fieldI) * std::exp(-kr);
+        } else {
+            return {0, 0, 0};
+        }
+    }
+
+    /**
+     * @brief electrostatic field from point quadrupole
+     * @param quad point quadrupole, UNIT: [ ( input length )^2 x ( input charge ) ]
+     * @param r distance-vector from point quadrupole, UNIT: [ input length ]
+     * @returns field from quadrupole, UNIT: [ ( input charge ) / ( input length )^2 ]
+     *
+     * The field from a point quadrupole is described by
+     * @f[
+     *     {\bf E}(\boldsymbol{Q}, {\bf r}) = ...
+     * @f]
+     */
+    inline vec3 quadrupole_field(const mat33 &quad, const vec3 &r) const {
+        double r2 = r.squaredNorm();
+        if (r2 < cutoff2) {
+            double r1 = std::sqrt(r2);
+            vec3 rh = r / r1;
+            double q = r1 * invcutoff;
+            double q2 = q * q;
+            double kr = kappa * r1;
+            double kr2 = kr * kr;
+            double r4 = r2 * r2;
+            vec3 quadrh = quad*rh;
+            vec3 quadTrh = quad.transpose()*rh;
+	    double quadfactor = 1.0/r2*r.transpose()*quad*r;
+            vec3 fieldD =
+                3.0 * ((5.0 * quadfactor - quad.trace()) * rh - quadrh - quadTrh) / r4;
+            double srf = static_cast<const T *>(this)->short_range_function(q);
+            double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
+            double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
+            double dddsrf = static_cast<const T *>(this)->short_range_function_third_derivative(q);
+            fieldD *= (srf * (1.0 + kr + kr2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kr) + q2 / 3.0 * ddsrf);
+            vec3 fieldI = quadfactor * rh / r4;
+            fieldI *= (srf * (1.0 + kr) * kr2 - q * dsrf * (3.0 * kr + 2.0) * kr + ddsrf * (1.0 + 3.0 * kr) * q2 - q2 * q * dddsrf);
+            return 0.5 * (fieldD + fieldI) * std::exp(-kr);
         } else {
             return {0, 0, 0};
         }
@@ -752,6 +831,7 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
      * @brief electrostatic field from point multipole
      * @param z charge, UNIT: [ input charge ]
      * @param mu dipole, UNIT: [ ( input length ) x ( input charge ) ]
+     * @param quad point quadrupole, UNIT: [ ( input length )^2 x ( input charge ) ]
      * @param r distance-vector from point multipole, UNIT: [ input length ]
      * @returns field from multipole, UNIT: [ ( input charge ) / ( input length )^2 ]
      *
@@ -763,23 +843,29 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
      * \frac{\boldsymbol{\mu}}{|{\bf r}|^3}\frac{q^2}{3}s^{\prime\prime}(q)
      * @f]
      */
-    inline vec3 multipole_field(double z, const vec3 &mu, const vec3 &r) const override {
+    inline vec3 multipole_field(double z, const vec3 &mu, const mat33 &quad, const vec3 &r) const {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
+            vec3 rh = r / r1;
             double q = r1 * invcutoff;
-            double r3 = r1 * r2;
             double q2 = q * q;
-            double kappa2 = kappa * kappa;
-            double kappa_x_r1 = kappa * r1;
+            double r3 = r1 * r2;
+            double kr = kappa * r1;
+            double kr2 = kr * kr;
+            double quadfactor = 1.0/r2*r.transpose()*quad*r;
             double srf = static_cast<const T *>(this)->short_range_function(q);
             double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
             double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
-            vec3 fieldIon = z * r / r3 * ( srf * (1.0 + kappa_x_r1) - q * dsrf ); // field from ion
-            vec3 fieldD = (3.0 * mu.dot(r) * r / r2 - mu) / r3;
-            fieldD *= (srf * (1.0 + kappa_x_r1 + kappa2 * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa_x_r1) + q2 / 3.0 * ddsrf);
-            vec3 fieldI = mu / r3 * (srf * kappa2 * r2 - 2.0 * kappa_x_r1 * q * dsrf + ddsrf * q2) / 3.0;
-            return (fieldD + fieldI + fieldIon) * std::exp(-kappa_x_r1);
+            double dddsrf = static_cast<const T *>(this)->short_range_function_third_derivative(q);
+            vec3 fieldIon = z * r / r3 * ( srf * (1.0 + kr) - q * dsrf ); // field from ion
+             double postfactor = (srf * (1.0 + kr + kr2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kr) + q2 / 3.0 * ddsrf);
+            vec3 fieldDd = (3.0 * mu.dot(r) * r / r2 - mu) / r3 * postfactor;
+            vec3 fieldId = mu / r3 * (srf * kr2 - 2.0 * kr * q * dsrf + ddsrf * q2) / 3.0;
+            vec3 fieldDq = 3.0 * ((5.0 * quadfactor - quad.trace()) * rh - quad * rh - quad.transpose() * rh) / r3 / r1 * postfactor;
+            vec3 fieldIq = quadfactor * rh / r3 / r1;
+            fieldIq *= (srf * (1.0 + kr) * kr2 - q * dsrf * (3.0 * kr + 2.0) * kr + ddsrf * (1.0 + 3.0 * kr) * q2 - q2 * q * dddsrf);
+            return ( fieldIon + fieldDd + fieldId + 0.5 * (fieldDq + fieldIq) ) * std::exp(-kr);
         } else {
             return {0, 0, 0};
         }
@@ -843,38 +929,61 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
     }
 
     /**
+     * @brief interaction energy between a point charges and a point quadrupole
+     * @param z point charge, UNIT: [ input charge ]
+     * @param quad quadrupole moment, UNIT: [ ( input length )^2 x ( input charge ) ]
+     * @param r distance-vector between quadrupole and charge, @f$ {\bf r} = {\bf r}_{\boldsymbol{Q}} - {\bf r}_z @f$, UNIT: [ input length ]
+     * @returns interaction energy, UNIT: [ ( input charge )^2 / ( input length ) ]
+     *
+     * The interaction energy between an ion and a quadrupole is decribed by
+     * @f[
+     *     u(z, \boldsymbol{Q}, {\bf r}) = z \Phi(\boldsymbol{Q}, -{\bf r})
+     * @f]
+     * where @f$ \Phi(\boldsymbol{Q}, -{\bf r}) @f$ is the potential from the quadrupole at the location of the ion.
+     */
+    inline double ion_quadrupole_energy(double z, const mat33 &quad, const vec3 &r) const override {
+        return z * quadrupole_potential(quad, -r); // potential of quadrupole interacting with charge
+    }
+
+    /**
      * @brief interaction energy between two multipoles with charges and dipole moments
      * @param zA point charge of particle A, UNIT: [ input charge ]
      * @param zB point charge of particle B, UNIT: [ input charge ]
      * @param muA point dipole moment of particle A, UNIT: [ ( input length ) x ( input charge ) ]
      * @param muB point dipole moment of particle B, UNIT: [ ( input length ) x ( input charge ) ]
+     * @param quadA point quadrupole of particle A, UNIT: [ ( input length )^2 x ( input charge ) ]
+     * @param quadB point quadrupole of particle B, UNIT: [ ( input length )^2 x ( input charge ) ]
      * @param r distance-vector between dipoles, @f$ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f$, UNIT: [ input length ]
      * @returns interaction energy, UNIT: [ ( input charge )^2 / ( input length ) ]
      *
-     * A combination of the functions 'ion_ion_energy', 'ion_dipole_energy' and 'dipole_dipole_energy'.
+     * A combination of the functions 'ion_ion_energy', 'ion_dipole_energy', 'dipole_dipole_energy' and 'ion_quadrupole_energy'.
      */
-    inline double multipole_multipole_energy(double zA, double zB, const vec3 &muA, const vec3 &muB,
+    inline double multipole_multipole_energy(double zA, double zB, const vec3 &muA, const vec3 &muB, const mat33 &quadA, const mat33 &quadB,
                                              const vec3 &r) const override {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
             double r1 = std::sqrt(r2);
-            double r3 = r1 * r2;
             double q = r1 / cutoff;
-            double kappa_r1 = kappa * r1;
+            double kr = kappa * r1;
+            double quadAtrace = quadA.trace();
+            double quadBtrace = quadB.trace();
 
             double srf = static_cast<const T *>(this)->short_range_function(q);
             double dsrfq = static_cast<const T *>(this)->short_range_function_derivative(q) * q;
             double ddsrfq2 = static_cast<const T *>(this)->short_range_function_second_derivative(q) * q * q / 3.0;
 
-            double tmp1 = (srf * (1.0 + kappa_r1) - dsrfq) / r3;
-            double tmp2 = (srf * kappa_r1 * kappa_r1 / 3.0 - dsrfq * (2.0 / 3.0 * kappa_r1) + ddsrfq2) / r3;
+            double angcor = (srf * (1.0 + kr) - dsrfq);
+            double unicor = (srf * kr * kr / 3.0 - 2.0 / 3.0 * dsrfq * kr + ddsrfq2);
+	    double muBdotr = muB.dot(r);
+            vec3 field_dipoleB = (3.0 * muBdotr * r / r2 - muB) * (angcor + unicor) + muB * unicor;
 
-            vec3 field_dipoleB = (3.0 * muB.dot(r) * r / r2 - muB) * (tmp1 + tmp2) + muB * tmp2;
+            double ion_ion = zA * zB * srf * r2; // will later be divided by r3
+            double ion_dipole = (zB * muA.dot(r) - zA * muBdotr) * angcor; // will later be divided by r3
+            double dipole_dipole = -muA.dot(field_dipoleB); // will later be divided by r3
+            double ion_quadrupole = zA * 0.5 * ( ( 3.0/r2*r.transpose()*quadB*r - quadBtrace ) * (angcor + unicor) + quadBtrace * unicor ); // will later be divided by r3
+            ion_quadrupole += zB * 0.5 * ( ( 3.0/r2*r.transpose()*quadA*r - quadAtrace ) * (angcor + unicor) + quadAtrace * unicor );
 
-            double ion_ion = zA * zB / r1 * srf;
-            double ion_dipole = (zB * muA.dot(r) + zA * muB.dot(-r)) * tmp1;
-            double dipole_dipole = -muA.dot(field_dipoleB);
-            return (ion_ion + ion_dipole + dipole_dipole) * std::exp(-kappa_r1);
+            return (ion_ion + ion_dipole + dipole_dipole + ion_quadrupole) * std::exp(-kr) / r2 / r1;
         } else {
             return 0.0;
         }
@@ -945,6 +1054,7 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
             vec3 rh = r / r1;
             double q = r1 * invcutoff;
             double q2 = q * q;
+            double kr = kappa * r1;
             double r4 = r2 * r2;
             double muAdotRh = muA.dot(rh);
             double muBdotRh = muB.dot(rh);
@@ -954,17 +1064,29 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
             double dsrf = static_cast<const T *>(this)->short_range_function_derivative(q);
             double ddsrf = static_cast<const T *>(this)->short_range_function_second_derivative(q);
             double dddsrf = static_cast<const T *>(this)->short_range_function_third_derivative(q);
-            forceD *= (srf * (1.0 + kappa * r1 + kappa * kappa * r2 / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kappa * r1) +
-                       q2 / 3.0 * ddsrf);
+            forceD *= (srf * (1.0 + kr + kr * kr / 3.0) - q * dsrf * (1.0 + 2.0 / 3.0 * kr) + q2 / 3.0 * ddsrf);
             vec3 forceI = muAdotRh * muBdotRh * rh / r4;
-            forceI *=
-                (srf * (1.0 + kappa * r1) * kappa * kappa * r2 - q * dsrf * (3.0 * kappa * r1 + 2.0) * kappa * r1 +
-                 ddsrf * (1.0 + 3.0 * kappa * r1) * q2 - q2 * q * dddsrf);
-            return (forceD + forceI) * std::exp(-kappa * r1);
+            forceI *= (srf * (1.0 + kr) * kr * kr - q * dsrf * (3.0 * kr + 2.0) * kr + ddsrf * (1.0 + 3.0 * kr) * q2 - q2 * q * dddsrf);
+            return (forceD + forceI) * std::exp(-kr);
         } else {
             return {0, 0, 0};
         }
     }
+
+    /**
+     * @brief interaction force between a point charge and a point quadrupole
+     * @param z point charge, UNIT: [ input charge ]
+     * @param quad point quadrupole, UNIT: [ ( input length )^2 x ( input charge ) ]
+     * @param r distance-vector between particles, @f$ {\bf r} = {\bf r}_{Q} - {\bf r}_{z} @f$, UNIT: [ input length ]
+     * @returns interaction force, UNIT: [ ( input charge )^2 / ( input length )^2 ]
+     *
+     * The force between a point charge and a point quadrupole is described by
+     * @f[
+     *     {\bf F}(z, Q, {\bf r}) = z {\bf E}(Q, {\bf r})
+     * @f]
+     * where @f$ {\bf E}(Q, {\bf r}) @f$ is the field from the quadrupole at the location of the ion.
+     */
+    inline vec3 ion_quadrupole_force(double z, const mat33 &quad, const vec3 &r) const override { return z * quadrupole_field(quad, r); }
 
     /**
      * @brief interaction force between two point multipoles
@@ -972,12 +1094,14 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
      * @param zB charge of particle B, UNIT: [ input charge ]
      * @param muA dipole moment of particle A, UNIT: [ ( input length ) x ( input charge ) ]
      * @param muB dipole moment of particle B, UNIT: [ ( input length ) x ( input charge ) ]
+     * @param quadA point quadrupole of particle A, UNIT: [ ( input length )^2 x ( input charge ) ]
+     * @param quadB point quadrupole of particle B, UNIT: [ ( input length )^2 x ( input charge ) ]
      * @param r distance-vector between dipoles, @f[ {\bf r} = {\bf r}_{\mu_B} - {\bf r}_{\mu_A} @f], UNIT: [ input length ]
      * @returns interaction force, UNIT: [ ( input charge )^2 / ( input length )^2 ]
      *
-     * @details A combination of the functions 'ion_ion_force', 'ion_dipole_force' and 'dipole_dipole_force'.
+     * @details A combination of the functions 'ion_ion_force', 'ion_dipole_force', 'dipole_dipole_force' and 'ion_quadrupole_force'.
      */
-    inline vec3 multipole_multipole_force(double zA, double zB, const vec3 &muA, const vec3 &muB,
+    inline vec3 multipole_multipole_force(double zA, double zB, const vec3 &muA, const vec3 &muB, const mat33 &quadA, const mat33 &quadB,
                                           const vec3 &r) const override {
         double r2 = r.squaredNorm();
         if (r2 < cutoff2) {
@@ -991,26 +1115,28 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
 
             double srf = static_cast<const T *>(this)->short_range_function(q);
             double dsrfq = static_cast<const T *>(this)->short_range_function_derivative(q) * q;
-            double ddsrfq2 = static_cast<const T *>(this)->short_range_function_second_derivative(q) * q2;
+            double ddsrfq2 = static_cast<const T *>(this)->short_range_function_second_derivative(q) * q2 / 3.0;
             double dddsrfq3 = static_cast<const T *>(this)->short_range_function_third_derivative(q) * q2 * q;
 
-            double tmp0 = (srf * (1.0 + kr) - dsrfq);
-            double tmp1 = (srf * kr * kr - 2.0 * kr * dsrfq + ddsrfq2) / 3.0;
-            double tmp2 = tmp1 + tmp0;
-            double tmp3 = (srf * (1.0 + kr) * kr * kr - dsrfq * (2.0 * (1.0 + kr) + kr) * kr +
-                           ddsrfq2 * (1.0 + 3.0 * kr) - dddsrfq3) /
-                          r1;
+            double angcor = (srf * (1.0 + kr) - dsrfq);
+            double unicor = (srf * kr - 2.0 * dsrfq) * kr / 3.0 + ddsrfq2;
+            double totcor = unicor + angcor;
+	    double r3corr = ( angcor * kr * kr - dsrfq * 2.0 * (1.0 + kr) * kr + 3.0 * ddsrfq2 * (1.0 + 3.0 * kr) - dddsrfq3);
 
-            vec3 ion_ion = zB * zA * r * (srf * (1.0 + kr) - dsrfq);
-            // vec3 ion_ion = zB * zA * r * tmp0;
+            vec3 ion_ion = zB * zA * r * angcor * r1;
+            vec3 ion_dipole = zA * ((3.0 * muBdotRh * rh - muB) * totcor + muB * unicor);
+            ion_dipole += zB * ((3.0 * muAdotRh * rh - muA) * totcor + muA * unicor);
+            ion_dipole *= r1;
+            vec3 forceD = 3.0 * ((5.0 * muAdotRh * muBdotRh - muA.dot(muB)) * rh - muBdotRh * muA - muAdotRh * muB) * totcor;
+            vec3 dipole_dipole = (forceD + muAdotRh * muBdotRh * rh * r3corr);
+            double quadfactor = 1.0/r2*r.transpose()*quadB*r;
+            vec3 fieldD = 3.0 * (-(5.0 * quadfactor - quadB.trace()) * rh + quadB*rh + quadB.transpose()*rh) * totcor;
+            vec3 ion_quadrupole = zA * 0.5 * (fieldD - quadfactor * rh * r3corr);
+            quadfactor = 1.0/r2*r.transpose()*quadA*r;
+            fieldD = 3.0 * ((5.0 * quadfactor - quadA.trace()) * rh - quadA*rh - quadA.transpose()*rh) * totcor;
+            ion_quadrupole += zB * 0.5 * (fieldD + quadfactor * rh * r3corr);
 
-            vec3 ion_dipoleA = zA * ((3.0 * muBdotRh * rh - muB) * tmp2 + muB * tmp1);
-            vec3 ion_dipoleB = zB * ((3.0 * muAdotRh * rh - muA) * tmp2 + muA * tmp1);
-
-            vec3 forceD =
-                3.0 * ((5.0 * muAdotRh * muBdotRh - muA.dot(muB)) * rh - muBdotRh * muA - muAdotRh * muB) * tmp2 / r1;
-            vec3 dipole_dipole = (forceD + muAdotRh * muBdotRh * rh * tmp3);
-            return (ion_ion + ion_dipoleA + ion_dipoleB + dipole_dipole) * std::exp(-kr) / r2 / r1;
+            return (ion_ion + ion_dipole + dipole_dipole + ion_quadrupole) * std::exp(-kr) / r2 / r2;
         } else {
             return {0, 0, 0};
         }
@@ -1093,22 +1219,20 @@ class Plain : public EnergyImplementation<Plain> {
 #endif
 };
 
-// -------------- Ewald real-space ---------------
+// -------------- Ewald real-space (using Gaussian) ---------------
 
 /**
- * @brief Ewald real-space scheme
+ * @brief Ewald real-space scheme using a Gaussian screening-function.
  *
  * @note The implemented charge-compensation for Ewald differes from that of in DOI:10.1021/ct400626b where chi = -pi /
- * alpha2. This expression is only correct if integration is over all space, not just the unit-cell, cf. Eq. 14
+ * alpha2. This expression is only correct if integration is over all space, not just the cutoff region, cf. Eq. 14
  * in 10.1021/jp951011v. Thus the implemented expression is roughly -pi / alpha2 for alpha > ~2-3. User beware!
+ * (also see DOI:10.1063/1.470721)
  */
 class Ewald : public EnergyImplementation<Ewald> {
-    double alpha, alpha2;                  //!< Damping-parameter
-    double alphaRed, alphaRed2, alphaRed3; //!< Reduced damping-parameter, and squared
+    double eta, eta2, eta3;                //!< Reduced damping-parameter, and squared, and cubed
+    double zeta, zeta2, zeta3;             //!< Reduced inverse Debye-length, and squared, and cubed
     double eps_sur;                        //!< Dielectric constant of the surrounding medium
-    //double debye_length;                   //!< Debye-length
-    double kappa, kappa2;                  //!< Inverse Debye-length
-    double beta, beta2, beta3;             //!< Inverse ( twice Debye-length times damping-parameter )
     const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
     const double pi = 4.0 * std::atan(1.0);
 
@@ -1118,64 +1242,46 @@ class Ewald : public EnergyImplementation<Ewald> {
      * @param alpha damping-parameter
      */
     inline Ewald(double cutoff, double alpha, double eps_sur = infinity, double debye_length = infinity)
-        : EnergyImplementation(Scheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur) {
+        : EnergyImplementation(Scheme::ewald, cutoff), eps_sur(eps_sur) {
         name = "Ewald real-space";
         dipolar_selfenergy = true;
         doi = "10.1002/andp.19213690304";
-        alpha2 = alpha * alpha;
-        alphaRed = alpha * cutoff;
-        alphaRed2 = alphaRed * alphaRed;
-        alphaRed3 = alphaRed2 * alphaRed;
+        eta = alpha * cutoff;
+        eta2 = eta * eta;
+        eta3 = eta2 * eta;
         if (eps_sur < 1.0)
             eps_sur = infinity;
-        T0 = (std::isinf(eps_sur)) ? 1.0 : 2.0 * (eps_sur - 1.0) / (2.0 * eps_sur + 1.0);
-        chi =
-            (2.0 * alphaRed * exp(-alphaRed2) / pi_sqrt + (-2.0 * alphaRed2 + 1) * erfc(alphaRed) - 1.0) * pi / alpha2;
-        kappa = 1.0 / debye_length;
-        kappa2 = kappa * kappa;
-        beta = kappa / (2.0 * alpha);
-        beta2 = beta * beta;
-        beta3 = beta2 * beta;
-        setSelfEnergyPrefactor(
-            {-alphaRed / pi_sqrt * (std::exp(-beta2) - pi_sqrt * beta * std::erfc(beta)),
-             -alphaRed3 * 2.0 / 3.0 / pi_sqrt *
-                 (2.0 * pi_sqrt * beta3 * std::erfc(beta) + (1.0 - 2.0 * beta2) * std::exp(-beta2))});
+        double Q = 1.0 - std::erfc(eta) - 2.0 * eta / pi_sqrt * std::exp(-eta2); // Eq. 12 in DOI: 10.1016/0009-2614(83)80585-5 using 'K = cutoff region'
+        T0 = (std::isinf(eps_sur)) ? Q : ( Q - 1.0 + 2.0 * (eps_sur - 1.0) / (2.0 * eps_sur + 1.0) ); // Eq. 17 in DOI: 10.1016/0009-2614(83)80585-5
+        chi = 4.0 * ( 0.5 * ( 1.0 - zeta ) * std::erfc( eta + zeta / ( 2.0 * eta ) ) * std::exp( zeta ) + std::erf( eta ) * std::exp(-zeta2 / ( 4.0 * eta2 ) ) + 
+                0.5 * ( 1.0 + zeta ) * std::erfc( eta - zeta / ( 2.0 * eta ) ) * std::exp( -zeta ) - 1.0 ) * pi * cutoff2 / zeta2;
+        // chi = -pi * cutoff2 / eta2 according to DOI:10.1021/ct400626b, for uncscreened system
+        zeta = cutoff / debye_length;
+        zeta2 = zeta * zeta;
+        zeta3 = zeta2 * zeta;
+        setSelfEnergyPrefactor({
+            -eta / pi_sqrt * (std::exp(-zeta2 / 4.0 / eta2) - pi_sqrt * zeta / (2.0 * eta) * std::erfc(zeta / (2.0 * eta) ) ),
+            -eta3 / pi_sqrt * 2.0 / 3.0 *
+                (pi_sqrt * zeta3 / 4.0 / eta3 * std::erfc(zeta / (2.0 * eta) ) + (1.0 - zeta2 / 2.0 / eta2) * std::exp(-zeta2 / 4.0 / eta2))}); // ion-quadrupole self-energy term: XYZ
     }
 
     inline double short_range_function(double q) const override {
-        return 0.5 *
-               (std::erfc(alphaRed * q + beta) * std::exp(4.0 * alphaRed * beta * q) + std::erfc(alphaRed * q - beta));
+        return 0.5 * (std::erfc(eta * q + zeta / (2.0 * eta)) * std::exp(2.0 * zeta * q) + std::erfc(eta * q - zeta / (2.0 * eta)));
     }
     inline double short_range_function_derivative(double q) const override {
-        double expC = std::exp(-powi(alphaRed * q - beta, 2));
-        double erfcC = std::erfc(alphaRed * q + beta);
-        return (-2.0 * alphaRed / pi_sqrt * expC + 2.0 * alphaRed * beta * erfcC * std::exp(4.0 * alphaRed * beta * q));
+        double expC = std::exp(-powi(eta * q - zeta / (2.0 * eta), 2));
+        double erfcC = std::erfc(eta * q + zeta / (2.0 * eta));
+        return (-2.0 * eta / pi_sqrt * expC + zeta * erfcC * std::exp(2.0 * zeta * q));
     }
     inline double short_range_function_second_derivative(double q) const override {
-        double expC = std::exp(-powi(alphaRed * q - beta, 2));
-        double erfcC = std::erfc(alphaRed * q + beta);
-        return (4.0 * alphaRed2 / pi_sqrt * (alphaRed * q - 2.0 * beta) * expC +
-                8.0 * alphaRed2 * beta2 * erfcC * std::exp(4.0 * alphaRed * beta * q));
+        double expC = std::exp(-powi(eta * q - zeta / (2.0 * eta), 2));
+        double erfcC = std::erfc(eta * q + zeta / (2.0 * eta));
+        return (4.0 * eta2 / pi_sqrt * (eta * q - zeta / eta) * expC + 2.0 * zeta2 * erfcC * std::exp(2.0 * zeta * q));
     }
     inline double short_range_function_third_derivative(double q) const override {
-        double expC = std::exp(-powi(alphaRed * q - beta, 2));
-        double erfcC = std::erfc(alphaRed * q + beta);
-        return (4.0 * alphaRed3 / pi_sqrt *
-                    (1.0 - 2.0 * (alphaRed * q - 2.0 * beta) * (alphaRed * q - beta) - 4.0 * beta2) * expC +
-                32.0 * alphaRed3 * beta3 * erfcC * std::exp(4.0 * alphaRed * beta * q));
-    }
-
-    /**
-     * @brief Compensating term for non-neutral systems
-     * @param charges Charges of particles
-     * @param volume Volume of unit-cell
-     * @note DOI:10.1021/ct400626b
-     */
-    inline double neutralization_energy(const std::vector<double> &charges, double volume) const override {
-        double squaredSumQ = 0.0;
-        for (size_t i = 0; i < charges.size(); i++)
-            squaredSumQ += charges[i] * charges[i]; // this should be squared, right?!
-        return (-pi / (2.0 * alpha2 * volume) * squaredSumQ);
+        double expC = std::exp(-powi(eta * q - zeta / (2.0 * eta), 2));
+        double erfcC = std::erfc(eta * q + zeta / (2.0 * eta));
+        return (4.0 * eta3 / pi_sqrt * (1.0 - 2.0 * (eta * q - zeta / eta) * (eta * q - zeta / (2.0 * eta) ) - zeta2 / eta2) * expC + 4.0 * zeta3 * erfcC * std::exp(2.0 * zeta * q));
     }
 
     /**
@@ -1202,13 +1308,13 @@ class Ewald : public EnergyImplementation<Ewald> {
             for (int ny = -nmax; ny < nmax + 1; ny++) {
                 for (int nz = -nmax; nz < nmax + 1; nz++) {
                     vec3 kv = {2.0 * pi * nx / L[0], 2.0 * pi * ny / L[1], 2.0 * pi * nz / L[2]};
-                    double k2 = kv.squaredNorm() + kappa2;
+                    double k2 = kv.squaredNorm() + zeta2 / cutoff2;
                     vec3 nv = {double(nx), double(ny), double(nz)};
                     double nv1 = nv.squaredNorm();
                     if (nv1 > 0) {
                         if (nv1 <= nmax * nmax) {
                             kvec.push_back(kv);
-                            Ak.push_back(std::exp(-k2 / (4.0 * alpha2) - beta2) / k2);
+                            Ak.push_back(std::exp(-( k2 * cutoff2 + zeta2 ) / 4.0 / eta2 ) / k2);
                         }
                     }
                 }
@@ -1264,7 +1370,155 @@ class Ewald : public EnergyImplementation<Ewald> {
 
   private:
     inline void _to_json(nlohmann::json &j) const override {
-        j = {{ "alpha", alpha }};
+        j = {{ "alpha", eta/cutoff }};
+        if (std::isinf(eps_sur))
+            j["epss"] = "inf";
+        else
+            j["epss"] = eps_sur;
+    }
+#endif
+};
+
+// -------------- Ewald real-space (using truncated Gaussian) ---------------
+
+/**
+ * @brief Ewald real-space scheme using a truncated Gaussian screening-function.
+ */
+class EwaldT : public EnergyImplementation<EwaldT> {
+    double eta, eta2, eta3;                //!< Reduced damping-parameter, and squared, and cubed
+    double zeta, zeta2, zeta3;             //!< Reduced inverse Debye-length, and squared, and cubed
+    double eps_sur;                        //!< Dielectric constant of the surrounding medium
+    double F0;                             //!< 'scaling' of short-ranged function
+    const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
+    const double pi = 4.0 * std::atan(1.0);
+
+  public:
+    /**
+     * @param cutoff distance cutoff
+     * @param alpha damping-parameter
+     */
+    inline EwaldT(double cutoff, double alpha, double eps_sur = infinity, double debye_length = infinity)
+        : EnergyImplementation(Scheme::ewaldt, cutoff), eps_sur(eps_sur) {
+        name = "EwaldT real-space";
+        dipolar_selfenergy = true;
+        doi = "XYZ";
+        eta = alpha * cutoff;
+        eta2 = eta * eta;
+        eta3 = eta2 * eta;
+        if (eps_sur < 1.0)
+            eps_sur = infinity;
+	F0 = 1.0 - std::erfc(eta) - 2.0 * eta / pi_sqrt * std::exp(-eta2);
+        T0 = (std::isinf(eps_sur)) ? 1.0 : 2.0 * (eps_sur - 1.0) / (2.0 * eps_sur + 1.0);
+	chi = -( 1.0 - 4.0 * eta3 * std::exp( -eta2 ) / ( 3.0 * pi_sqrt * F0 ) ) * cutoff2 * pi / eta2;
+        setSelfEnergyPrefactor({-eta / pi_sqrt * (1.0 - std::exp( -eta2 ) ) / F0, -eta3 * 2.0 / 3.0 / ( std::erf( eta ) * pi_sqrt - 2.0 * eta * std::exp( -eta2 ) ) });
+    }
+
+    inline double short_range_function(double q) const override {
+	return ( std::erfc(eta * q) - std::erfc(eta) - (1.0 - q) * 2.0 * eta / pi_sqrt * std::exp(-eta2) ) / F0;
+    }
+    inline double short_range_function_derivative(double q) const override {
+	return - 2.0 * eta * ( std::exp( -eta2 * q * q ) - std::exp( -eta2 ) ) / pi_sqrt / F0;
+    }
+    inline double short_range_function_second_derivative(double q) const override {
+        return 4.0 * eta3 * q * std::exp( -eta2 * q * q ) / pi_sqrt / F0;
+    }
+    inline double short_range_function_third_derivative(double q) const override {
+        return - 8.0 * ( eta2 * q * q - 0.5 ) * eta3 * std::exp( -eta2 * q * q ) / pi_sqrt / F0;
+    }
+
+    /**
+     * @brief Reciprocal-space energy
+     * @param positions Positions of particles
+     * @param charges Charges of particles
+     * @param dipoles Dipole moments of particles
+     * @param L Dimensions of unit-cell
+     * @param nmax Cut-off in reciprocal-space
+     * @note Uses spherical cut-off in summation
+     */
+    inline double reciprocal_energy(const std::vector<vec3> &positions, const std::vector<double> &charges,
+                                    const std::vector<vec3> &dipoles, const vec3 &L, int nmax) const {
+
+        assert(positions.size() == charges.size());
+        assert(positions.size() == dipoles.size());
+
+        double volume = L[0] * L[1] * L[2];
+        std::vector<vec3> kvec;
+        std::vector<double> Ak;
+        // kvec.reserve( expected_size_of_kvec ); // speeds up push_back below
+        // Ak.reserve( expected_size_of_Ak ); // speeds up push_back below
+        for (int nx = -nmax; nx < nmax + 1; nx++) {
+            for (int ny = -nmax; ny < nmax + 1; ny++) {
+                for (int nz = -nmax; nz < nmax + 1; nz++) {
+                    vec3 kv = {2.0 * pi * nx / L[0], 2.0 * pi * ny / L[1], 2.0 * pi * nz / L[2]};
+                    double k2 = kv.squaredNorm();// + kappa2;
+                    vec3 nv = {double(nx), double(ny), double(nz)};
+                    double nv1 = nv.squaredNorm();
+                    if (nv1 > 0) {
+                        if (nv1 <= nmax * nmax) {
+                            kvec.push_back(kv);
+			    double kR = std::sqrt(k2) * cutoff;
+			    std::complex<double> expV( std::cos( kR ) , -std::sin( kR ) );
+			    std::complex<double> z( -kR / ( 2.0 * eta ) , eta );
+			    double omegaSin = ( Faddeeva::w(z) * expV ).real();
+			    omegaSin += std::sin( kR ) / kR * 2.0 * eta / pi_sqrt;
+			    double expVar = std::exp( -k2 * cutoff2 / 4.0 / eta2 ) - omegaSin * std::exp(-eta2);
+			    Ak.push_back( expVar / F0 / k2 );
+                        }
+                    }
+                }
+            }
+        }
+
+        assert(kvec.size() == Ak.size());
+
+        double E = 0.0;
+        for (size_t k = 0; k < kvec.size(); k++) {
+            std::complex<double> Qq(0.0, 0.0);
+            std::complex<double> Qmu(0.0, 0.0);
+            for (size_t i = 0; i < positions.size(); i++) {
+                double kDotR = kvec[k].dot(positions[i]);
+                double coskDotR = std::cos(kDotR);
+                double sinkDotR = std::sin(kDotR);
+                Qq += charges[i] * std::complex<double>(coskDotR, sinkDotR);
+                Qmu += dipoles[i].dot(kvec[k]) * std::complex<double>(-sinkDotR, coskDotR);
+            }
+            std::complex<double> Q = Qq + Qmu;
+            E += (powi(std::abs(Q), 2) * Ak[k]);
+        }
+        return (E * 2.0 * pi / volume);
+    }
+
+    /**
+     * @brief Surface-term
+     * @param positions Positions of particles
+     * @param charges Charges of particles
+     * @param dipoles Dipole moments of particles
+     * @param volume Volume of unit-cell
+     */
+    inline double surface_energy(const std::vector<vec3> &positions, const std::vector<double> &charges,
+                                 const std::vector<vec3> &dipoles, double volume) const {
+        assert(positions.size() == charges.size());
+        assert(positions.size() == dipoles.size());
+        vec3 sum_r_charges = {0.0, 0.0, 0.0};
+        vec3 sum_dipoles = {0.0, 0.0, 0.0};
+        for (size_t i = 0; i < positions.size(); i++) {
+            sum_r_charges += positions[i] * charges[i];
+            sum_dipoles += dipoles[i];
+        }
+        double sqDipoles =
+            sum_r_charges.dot(sum_r_charges) + 2.0 * sum_r_charges.dot(sum_dipoles) + sum_dipoles.dot(sum_dipoles);
+
+        return (2.0 * pi / (2.0 * eps_sur + 1.0) / volume * sqDipoles);
+    }
+
+#ifdef NLOHMANN_JSON_HPP
+    inline EwaldT(const nlohmann::json &j)
+        : EwaldT(j.at("cutoff").get<double>(), j.at("alpha").get<double>(), j.value("epss", infinity),
+                j.value("debyelength", infinity)) {}
+
+  private:
+    inline void _to_json(nlohmann::json &j) const override {
+        j = {{ "alpha", eta/cutoff }};
         if (std::isinf(eps_sur))
             j["epss"] = "inf";
         else
@@ -1912,7 +2166,8 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
                                              {"fennell", Scheme::fennell},
                                              {"zahn", Scheme::zahn},
                                              {"zerodipole", Scheme::zerodipole},
-                                             {"ewald", Scheme::ewald}}; // map string keyword to scheme type
+                                             {"ewald", Scheme::ewald},
+                                             {"ewaldt", Scheme::ewaldt}}; // map string keyword to scheme type
 
     std::string name = j.at("type").get<std::string>();
     auto it = m.find(name);
@@ -1947,6 +2202,9 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
         break;
     case Scheme::ewald:
         scheme = std::make_shared<Ewald>(j);
+        break;
+    case Scheme::ewaldt:
+        scheme = std::make_shared<EwaldT>(j);
         break;
     case Scheme::poisson:
         scheme = std::make_shared<Poisson>(j);
