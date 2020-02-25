@@ -1183,10 +1183,10 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
      * @warning Not tested!
      */
     inline double neutralization_energy(const std::vector<double> &charges, double volume) const override {
-        double squaredSumQ = 0.0;
+        double charge_total = 0.0;
         for (unsigned int i = 0; i < charges.size(); i++)
-            squaredSumQ += charges.at(i);
-        return ((this)->chi / 2.0 / volume * squaredSumQ);
+            charge_total += charges.at(i);
+        return ((this)->chi / 2.0 / volume * charge_total * charge_total);
     }
 };
 
@@ -1253,12 +1253,17 @@ class Ewald : public EnergyImplementation<Ewald> {
             eps_sur = infinity;
         double Q = 1.0 - std::erfc(eta) - 2.0 * eta / pi_sqrt * std::exp(-eta2); // Eq. 12 in DOI: 10.1016/0009-2614(83)80585-5 using 'K = cutoff region'
         T0 = (std::isinf(eps_sur)) ? Q : ( Q - 1.0 + 2.0 * (eps_sur - 1.0) / (2.0 * eps_sur + 1.0) ); // Eq. 17 in DOI: 10.1016/0009-2614(83)80585-5
-        chi = 4.0 * ( 0.5 * ( 1.0 - zeta ) * std::erfc( eta + zeta / ( 2.0 * eta ) ) * std::exp( zeta ) + std::erf( eta ) * std::exp(-zeta2 / ( 4.0 * eta2 ) ) + 
-                0.5 * ( 1.0 + zeta ) * std::erfc( eta - zeta / ( 2.0 * eta ) ) * std::exp( -zeta ) - 1.0 ) * pi * cutoff2 / zeta2;
-        // chi = -pi * cutoff2 / eta2 according to DOI:10.1021/ct400626b, for uncscreened system
         zeta = cutoff / debye_length;
         zeta2 = zeta * zeta;
         zeta3 = zeta2 * zeta;
+        if(zeta < 1e-6) {
+            chi = -pi * cutoff2 * ( 1.0 - std::erfc( eta ) * ( 1.0 - 2.0 * eta2 ) - 2.0 * eta * std::exp( -eta2 ) / pi_sqrt ) / eta2;
+        } else {
+            chi = 4.0 * ( 0.5 * ( 1.0 - zeta ) * std::erfc( eta + zeta / ( 2.0 * eta ) ) * std::exp( zeta ) + std::erf( eta ) * std::exp(-zeta2 / ( 4.0 * eta2 ) ) + 
+                0.5 * ( 1.0 + zeta ) * std::erfc( eta - zeta / ( 2.0 * eta ) ) * std::exp( -zeta ) - 1.0 ) * pi * cutoff2 / zeta2;
+        }
+        // chi = -pi * cutoff2 / eta2 according to DOI:10.1021/ct400626b, for uncscreened system
+
         setSelfEnergyPrefactor({
             -eta / pi_sqrt * (std::exp(-zeta2 / 4.0 / eta2) - pi_sqrt * zeta / (2.0 * eta) * std::erfc(zeta / (2.0 * eta) ) ),
             -eta3 / pi_sqrt * 2.0 / 3.0 *
