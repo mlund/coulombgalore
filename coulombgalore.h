@@ -1410,7 +1410,7 @@ class EwaldT : public EnergyImplementation<EwaldT> {
 	F0 = 1.0 - std::erfc(eta) - 2.0 * eta / pi_sqrt * std::exp(-eta2);
         T0 = (std::isinf(eps_sur)) ? 1.0 : 2.0 * (eps_sur - 1.0) / (2.0 * eps_sur + 1.0);
 	chi = -( 1.0 - 4.0 * eta3 * std::exp( -eta2 ) / ( 3.0 * pi_sqrt * F0 ) ) * cutoff2 * pi / eta2;
-        self_energy_prefactor = {-eta / pi_sqrt * (1.0 - std::exp( -eta2 ) ) / F0, -eta3 * 2.0 / 3.0 / ( std::erf( eta ) * pi_sqrt - 2.0 * eta * std::exp( -eta2 ) ) };
+        setSelfEnergyPrefactor({-eta / pi_sqrt * (1.0 - std::exp( -eta2 ) ) / F0, -eta3 * 2.0 / 3.0 / ( std::erf( eta ) * pi_sqrt - 2.0 * eta * std::exp( -eta2 ) ) });
     }
 
     inline double short_range_function(double q) const override {
