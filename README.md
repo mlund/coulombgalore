@@ -1,4 +1,7 @@
 [![Documentation](https://codedocs.xyz/mlund/coulombgalore.svg)](https://codedocs.xyz/mlund/coulombgalore/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3522058.svg)](https://doi.org/10.5281/zenodo.3522058)
+
+
 
 # Coulomb Galore
 
