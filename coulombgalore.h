@@ -31,6 +31,7 @@
 #include <vector>
 #include <array>
 #include <Eigen/Core>
+#include "Faddeeva.hh"
 
 /** Namespace containing all of CoulombGalore */
 namespace CoulombGalore {
@@ -45,6 +46,7 @@ constexpr double infinity = std::numeric_limits<double>::infinity(); //!< Numeri
 enum class Scheme {
     plain,
     ewald,
+    ewaldt,
     reactionfield,
     wolf,
     poisson,
@@ -1197,22 +1199,20 @@ class Plain : public EnergyImplementation<Plain> {
 #endif
 };
 
-// -------------- Ewald real-space ---------------
+// -------------- Ewald real-space (using Gaussian) ---------------
 
 /**
- * @brief Ewald real-space scheme
+ * @brief Ewald real-space scheme using a Gaussian screening-function.
  *
  * @note The implemented charge-compensation for Ewald differes from that of in DOI:10.1021/ct400626b where chi = -pi /
- * alpha2. This expression is only correct if integration is over all space, not just the unit-cell, cf. Eq. 14
+ * alpha2. This expression is only correct if integration is over all space, not just the cutoff region, cf. Eq. 14
  * in 10.1021/jp951011v. Thus the implemented expression is roughly -pi / alpha2 for alpha > ~2-3. User beware!
+ * (also see DOI:10.1063/1.470721)
  */
 class Ewald : public EnergyImplementation<Ewald> {
-    double alpha, alpha2;                  //!< Damping-parameter
-    double alphaRed, alphaRed2, alphaRed3; //!< Reduced damping-parameter, and squared
+    double eta, eta2, eta3;                //!< Reduced damping-parameter, and squared, and cubed
+    double zeta, zeta2, zeta3;             //!< Reduced inverse Debye-length, and squared, and cubed
     double eps_sur;                        //!< Dielectric constant of the surrounding medium
-    double debye_length;                   //!< Debye-length
-    double kappa, kappa2;                  //!< Inverse Debye-length
-    double beta, beta2, beta3;             //!< Inverse ( twice Debye-length times damping-parameter )
     const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
     const double pi = 4.0 * std::atan(1.0);
 
@@ -1222,51 +1222,46 @@ class Ewald : public EnergyImplementation<Ewald> {
      * @param alpha damping-parameter
      */
     inline Ewald(double cutoff, double alpha, double eps_sur = infinity, double debye_length = infinity)
-        : EnergyImplementation(Scheme::ewald, cutoff), alpha(alpha), eps_sur(eps_sur) {
+        : EnergyImplementation(Scheme::ewald, cutoff), eps_sur(eps_sur) {
         name = "Ewald real-space";
         dipolar_selfenergy = true;
         doi = "10.1002/andp.19213690304";
-        alpha2 = alpha * alpha;
-        alphaRed = alpha * cutoff;
-        alphaRed2 = alphaRed * alphaRed;
-        alphaRed3 = alphaRed2 * alphaRed;
+        eta = alpha * cutoff;
+        eta2 = eta * eta;
+        eta3 = eta2 * eta;
         if (eps_sur < 1.0)
             eps_sur = infinity;
-        T0 = (std::isinf(eps_sur)) ? 1.0 : 2.0 * (eps_sur - 1.0) / (2.0 * eps_sur + 1.0);
-        chi =
-            (2.0 * alphaRed * exp(-alphaRed2) / pi_sqrt + (-2.0 * alphaRed2 + 1) * erfc(alphaRed) - 1.0) * pi / alpha2; // -pi / alpha^2 according to DOI:10.1021/ct400626b
-        kappa = 1.0 / debye_length;
-        kappa2 = kappa * kappa;
-        beta = kappa / (2.0 * alpha);
-        beta2 = beta * beta;
-        beta3 = beta2 * beta;
+	double Q = 1.0 - std::erfc(eta) - 2.0 * eta / pi_sqrt * std::exp(-eta2); // Eq. 12 in DOI: 10.1016/0009-2614(83)80585-5 using 'K = cutoff region'
+        T0 = (std::isinf(eps_sur)) ? Q : ( Q - 1.0 + 2.0 * (eps_sur - 1.0) / (2.0 * eps_sur + 1.0) ); // Eq. 17 in DOI: 10.1016/0009-2614(83)80585-5
+        chi = 4.0 * ( 0.5 * ( 1.0 - zeta ) * std::erfc( eta + zeta / ( 2.0 * eta ) ) * std::exp( zeta ) + std::erf( eta ) * std::exp(-zeta2 / ( 4.0 * eta2 ) ) + 
+                0.5 * ( 1.0 + zeta ) * std::erfc( eta - zeta / ( 2.0 * eta ) ) * std::exp( -zeta ) - 1.0 ) * pi * cutoff2 / zeta2;
+	// chi = -pi * cutoff2 / eta2 according to DOI:10.1021/ct400626b, for uncscreened system
+	zeta = cutoff / debye_length;
+	zeta2 = zeta * zeta;
+	zeta3 = zeta2 * zeta;
         self_energy_prefactor = {
-            -alphaRed / pi_sqrt * (std::exp(-beta2) - pi_sqrt * beta * std::erfc(beta)),
-            -alphaRed3 / pi_sqrt * 2.0 / 3.0 *
-                (2.0 * pi_sqrt * beta3 * std::erfc(beta) + (1.0 - 2.0 * beta2) * std::exp(-beta2))}; // ion-quadrupole self-energy term: 4.0 / 9.0 * alphaRed3 / pi_sqrt
+            -eta / pi_sqrt * (std::exp(-zeta2 / 4.0 / eta2) - pi_sqrt * zeta / (2.0 * eta) * std::erfc(zeta / (2.0 * eta) ) ),
+            -eta3 / pi_sqrt * 2.0 / 3.0 *
+                (pi_sqrt * zeta3 / 4.0 / eta3 * std::erfc(zeta / (2.0 * eta) ) + (1.0 - zeta2 / 2.0 / eta2) * std::exp(-zeta2 / 4.0 / eta2))}; // ion-quadrupole self-energy term: XYZ
     }
 
     inline double short_range_function(double q) const override {
-        return 0.5 *
-               (std::erfc(alphaRed * q + beta) * std::exp(4.0 * alphaRed * beta * q) + std::erfc(alphaRed * q - beta));
+        return 0.5 * (std::erfc(eta * q + zeta / (2.0 * eta)) * std::exp(2.0 * zeta * q) + std::erfc(eta * q - zeta / (2.0 * eta)));
     }
     inline double short_range_function_derivative(double q) const override {
-        double expC = std::exp(-powi(alphaRed * q - beta, 2));
-        double erfcC = std::erfc(alphaRed * q + beta);
-        return (-2.0 * alphaRed / pi_sqrt * expC + 2.0 * alphaRed * beta * erfcC * std::exp(4.0 * alphaRed * beta * q));
+        double expC = std::exp(-powi(eta * q - zeta / (2.0 * eta), 2));
+        double erfcC = std::erfc(eta * q + zeta / (2.0 * eta));
+        return (-2.0 * eta / pi_sqrt * expC + zeta * erfcC * std::exp(2.0 * zeta * q));
     }
     inline double short_range_function_second_derivative(double q) const override {
-        double expC = std::exp(-powi(alphaRed * q - beta, 2));
-        double erfcC = std::erfc(alphaRed * q + beta);
-        return (4.0 * alphaRed2 / pi_sqrt * (alphaRed * q - 2.0 * beta) * expC +
-                8.0 * alphaRed2 * beta2 * erfcC * std::exp(4.0 * alphaRed * beta * q));
+        double expC = std::exp(-powi(eta * q - zeta / (2.0 * eta), 2));
+        double erfcC = std::erfc(eta * q + zeta / (2.0 * eta));
+        return (4.0 * eta2 / pi_sqrt * (eta * q - zeta / eta) * expC + 2.0 * zeta2 * erfcC * std::exp(2.0 * zeta * q));
     }
     inline double short_range_function_third_derivative(double q) const override {
-        double expC = std::exp(-powi(alphaRed * q - beta, 2));
-        double erfcC = std::erfc(alphaRed * q + beta);
-        return (4.0 * alphaRed3 / pi_sqrt *
-                    (1.0 - 2.0 * (alphaRed * q - 2.0 * beta) * (alphaRed * q - beta) - 4.0 * beta2) * expC +
-                32.0 * alphaRed3 * beta3 * erfcC * std::exp(4.0 * alphaRed * beta * q));
+        double expC = std::exp(-powi(eta * q - zeta / (2.0 * eta), 2));
+        double erfcC = std::erfc(eta * q + zeta / (2.0 * eta));
+        return (4.0 * eta3 / pi_sqrt * (1.0 - 2.0 * (eta * q - zeta / eta) * (eta * q - zeta / (2.0 * eta) ) - zeta2 / eta2) * expC + 4.0 * zeta3 * erfcC * std::exp(2.0 * zeta * q));
     }
 
     /**
@@ -1293,13 +1288,13 @@ class Ewald : public EnergyImplementation<Ewald> {
             for (int ny = -nmax; ny < nmax + 1; ny++) {
                 for (int nz = -nmax; nz < nmax + 1; nz++) {
                     vec3 kv = {2.0 * pi * nx / L[0], 2.0 * pi * ny / L[1], 2.0 * pi * nz / L[2]};
-                    double k2 = kv.squaredNorm() + kappa2;
+                    double k2 = kv.squaredNorm() + zeta2 / cutoff2;
                     vec3 nv = {double(nx), double(ny), double(nz)};
                     double nv1 = nv.squaredNorm();
                     if (nv1 > 0) {
                         if (nv1 <= nmax * nmax) {
                             kvec.push_back(kv);
-                            Ak.push_back(std::exp(-k2 / (4.0 * alpha2) - beta2) / k2);
+                            Ak.push_back(std::exp(-( k2 * cutoff2 + zeta2 ) / 4.0 / eta2 ) / k2);
                         }
                     }
                 }
@@ -1355,7 +1350,155 @@ class Ewald : public EnergyImplementation<Ewald> {
 
   private:
     inline void _to_json(nlohmann::json &j) const override {
-        j = {{ "alpha", alpha }};
+        j = {{ "alpha", eta/cutoff }};
+        if (std::isinf(eps_sur))
+            j["epss"] = "inf";
+        else
+            j["epss"] = eps_sur;
+    }
+#endif
+};
+
+// -------------- Ewald real-space (using truncated Gaussian) ---------------
+
+/**
+ * @brief Ewald real-space scheme using a truncated Gaussian screening-function.
+ */
+class EwaldT : public EnergyImplementation<EwaldT> {
+    double eta, eta2, eta3;                //!< Reduced damping-parameter, and squared, and cubed
+    double zeta, zeta2, zeta3;             //!< Reduced inverse Debye-length, and squared, and cubed
+    double eps_sur;                        //!< Dielectric constant of the surrounding medium
+    double F0;                             //!< 'scaling' of short-ranged function
+    const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
+    const double pi = 4.0 * std::atan(1.0);
+
+  public:
+    /**
+     * @param cutoff distance cutoff
+     * @param alpha damping-parameter
+     */
+    inline EwaldT(double cutoff, double alpha, double eps_sur = infinity, double debye_length = infinity)
+        : EnergyImplementation(Scheme::ewaldt, cutoff), eps_sur(eps_sur) {
+        name = "EwaldT real-space";
+        dipolar_selfenergy = true;
+        doi = "XYZ";
+        eta = alpha * cutoff;
+        eta2 = eta * eta;
+        eta3 = eta2 * eta;
+        if (eps_sur < 1.0)
+            eps_sur = infinity;
+	F0 = 1.0 - std::erfc(eta) - 2.0 * eta / pi_sqrt * std::exp(-eta2);
+        T0 = (std::isinf(eps_sur)) ? 1.0 : 2.0 * (eps_sur - 1.0) / (2.0 * eps_sur + 1.0);
+	chi = -( 1.0 - 4.0 * eta3 * std::exp( -eta2 ) / ( 3.0 * pi_sqrt * F0 ) ) * cutoff2 * pi / eta2;
+        self_energy_prefactor = {-eta / pi_sqrt * (1.0 - std::exp( -eta2 ) ) / F0, -eta3 * 2.0 / 3.0 / ( std::erf( eta ) * pi_sqrt - 2.0 * eta * std::exp( -eta2 ) ) };
+    }
+
+    inline double short_range_function(double q) const override {
+	return ( std::erfc(eta * q) - std::erfc(eta) - (1.0 - q) * 2.0 * eta / pi_sqrt * std::exp(-eta2) ) / F0;
+    }
+    inline double short_range_function_derivative(double q) const override {
+	return - 2.0 * eta * ( std::exp( -eta2 * q * q ) - std::exp( -eta2 ) ) / pi_sqrt / F0;
+    }
+    inline double short_range_function_second_derivative(double q) const override {
+        return 4.0 * eta3 * q * std::exp( -eta2 * q * q ) / pi_sqrt / F0;
+    }
+    inline double short_range_function_third_derivative(double q) const override {
+        return - 8.0 * ( eta2 * q * q - 0.5 ) * eta3 * std::exp( -eta2 * q * q ) / pi_sqrt / F0;
+    }
+
+    /**
+     * @brief Reciprocal-space energy
+     * @param positions Positions of particles
+     * @param charges Charges of particles
+     * @param dipoles Dipole moments of particles
+     * @param L Dimensions of unit-cell
+     * @param nmax Cut-off in reciprocal-space
+     * @note Uses spherical cut-off in summation
+     */
+    inline double reciprocal_energy(const std::vector<vec3> &positions, const std::vector<double> &charges,
+                                    const std::vector<vec3> &dipoles, const vec3 &L, int nmax) const {
+
+        assert(positions.size() == charges.size());
+        assert(positions.size() == dipoles.size());
+
+        double volume = L[0] * L[1] * L[2];
+        std::vector<vec3> kvec;
+        std::vector<double> Ak;
+        // kvec.reserve( expected_size_of_kvec ); // speeds up push_back below
+        // Ak.reserve( expected_size_of_Ak ); // speeds up push_back below
+        for (int nx = -nmax; nx < nmax + 1; nx++) {
+            for (int ny = -nmax; ny < nmax + 1; ny++) {
+                for (int nz = -nmax; nz < nmax + 1; nz++) {
+                    vec3 kv = {2.0 * pi * nx / L[0], 2.0 * pi * ny / L[1], 2.0 * pi * nz / L[2]};
+                    double k2 = kv.squaredNorm();// + kappa2;
+                    vec3 nv = {double(nx), double(ny), double(nz)};
+                    double nv1 = nv.squaredNorm();
+                    if (nv1 > 0) {
+                        if (nv1 <= nmax * nmax) {
+                            kvec.push_back(kv);
+			    double kR = std::sqrt(k2) * cutoff;
+			    std::complex<double> expV( std::cos( kR ) , -std::sin( kR ) );
+			    std::complex<double> z( -kR / ( 2.0 * eta ) , eta );
+			    double omegaSin = ( Faddeeva::w(z) * expV ).real();
+			    omegaSin += std::sin( kR ) / kR * 2.0 * eta / pi_sqrt;
+			    double expVar = std::exp( -k2 * cutoff2 / 4.0 / eta2 ) - omegaSin * std::exp(-eta2);
+			    Ak.push_back( expVar / F0 / k2 );
+                        }
+                    }
+                }
+            }
+        }
+
+        assert(kvec.size() == Ak.size());
+
+        double E = 0.0;
+        for (size_t k = 0; k < kvec.size(); k++) {
+            std::complex<double> Qq(0.0, 0.0);
+            std::complex<double> Qmu(0.0, 0.0);
+            for (size_t i = 0; i < positions.size(); i++) {
+                double kDotR = kvec[k].dot(positions[i]);
+                double coskDotR = std::cos(kDotR);
+                double sinkDotR = std::sin(kDotR);
+                Qq += charges[i] * std::complex<double>(coskDotR, sinkDotR);
+                Qmu += dipoles[i].dot(kvec[k]) * std::complex<double>(-sinkDotR, coskDotR);
+            }
+            std::complex<double> Q = Qq + Qmu;
+            E += (powi(std::abs(Q), 2) * Ak[k]);
+        }
+        return (E * 2.0 * pi / volume);
+    }
+
+    /**
+     * @brief Surface-term
+     * @param positions Positions of particles
+     * @param charges Charges of particles
+     * @param dipoles Dipole moments of particles
+     * @param volume Volume of unit-cell
+     */
+    inline double surface_energy(const std::vector<vec3> &positions, const std::vector<double> &charges,
+                                 const std::vector<vec3> &dipoles, double volume) const {
+        assert(positions.size() == charges.size());
+        assert(positions.size() == dipoles.size());
+        vec3 sum_r_charges = {0.0, 0.0, 0.0};
+        vec3 sum_dipoles = {0.0, 0.0, 0.0};
+        for (size_t i = 0; i < positions.size(); i++) {
+            sum_r_charges += positions[i] * charges[i];
+            sum_dipoles += dipoles[i];
+        }
+        double sqDipoles =
+            sum_r_charges.dot(sum_r_charges) + 2.0 * sum_r_charges.dot(sum_dipoles) + sum_dipoles.dot(sum_dipoles);
+
+        return (2.0 * pi / (2.0 * eps_sur + 1.0) / volume * sqDipoles);
+    }
+
+#ifdef NLOHMANN_JSON_HPP
+    inline EwaldT(const nlohmann::json &j)
+        : EwaldT(j.at("cutoff").get<double>(), j.at("alpha").get<double>(), j.value("epss", infinity),
+                j.value("debyelength", infinity)) {}
+
+  private:
+    inline void _to_json(nlohmann::json &j) const override {
+        j = {{ "alpha", eta/cutoff }};
         if (std::isinf(eps_sur))
             j["epss"] = "inf";
         else
@@ -2004,7 +2147,8 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
                                              {"fennell", Scheme::fennell},
                                              {"zahn", Scheme::zahn},
                                              {"zerodipole", Scheme::zerodipole},
-                                             {"ewald", Scheme::ewald}}; // map string keyword to scheme type
+                                             {"ewald", Scheme::ewald},
+                                             {"ewaldt", Scheme::ewaldt}}; // map string keyword to scheme type
 
     std::string name = j.at("type").get<std::string>();
     auto it = m.find(name);
@@ -2039,6 +2183,9 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
         break;
     case Scheme::ewald:
         scheme = std::make_shared<Ewald>(j);
+        break;
+    case Scheme::ewaldt:
+        scheme = std::make_shared<EwaldT>(j);
         break;
     case Scheme::poisson:
         scheme = std::make_shared<Poisson>(j);
