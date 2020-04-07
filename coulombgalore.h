@@ -33,7 +33,6 @@
 #include <functional>
 #include <memory>
 #include <Eigen/Core>
-#include "Faddeeva.hh"
 
 /** modern json for c++ added "_" suffix at around ~version 3.6 */
 #ifdef NLOHMANN_JSON_HPP_
@@ -1429,68 +1428,6 @@ class EwaldT : public EnergyImplementation<EwaldT> {
     }
     inline double short_range_function_third_derivative(double q) const override {
         return - 8.0 * ( eta2 * q * q - 0.5 ) * eta3 * std::exp( -eta2 * q * q ) / pi_sqrt / F0;
-    }
-
-    /**
-     * @brief Reciprocal-space energy
-     * @param positions Positions of particles
-     * @param charges Charges of particles
-     * @param dipoles Dipole moments of particles
-     * @param L Dimensions of unit-cell
-     * @param nmax Cut-off in reciprocal-space
-     * @note Uses spherical cut-off in summation
-     */
-    inline double reciprocal_energy(const std::vector<vec3> &positions, const std::vector<double> &charges,
-                                    const std::vector<vec3> &dipoles, const vec3 &L, int nmax) const {
-
-        assert(positions.size() == charges.size());
-        assert(positions.size() == dipoles.size());
-
-        double volume = L[0] * L[1] * L[2];
-        std::vector<vec3> kvec;
-        std::vector<double> Ak;
-        // kvec.reserve( expected_size_of_kvec ); // speeds up push_back below
-        // Ak.reserve( expected_size_of_Ak ); // speeds up push_back below
-        for (int nx = -nmax; nx < nmax + 1; nx++) {
-            for (int ny = -nmax; ny < nmax + 1; ny++) {
-                for (int nz = -nmax; nz < nmax + 1; nz++) {
-                    vec3 kv = {2.0 * pi * nx / L[0], 2.0 * pi * ny / L[1], 2.0 * pi * nz / L[2]};
-                    double k2 = kv.squaredNorm();// + kappa2;
-                    vec3 nv = {double(nx), double(ny), double(nz)};
-                    double nv1 = nv.squaredNorm();
-                    if (nv1 > 0) {
-                        if (nv1 <= nmax * nmax) {
-                            kvec.push_back(kv);
-			    double kR = std::sqrt(k2) * cutoff;
-			    std::complex<double> expV( std::cos( kR ) , -std::sin( kR ) );
-			    std::complex<double> z( -kR / ( 2.0 * eta ) , eta );
-			    double omegaSin = ( Faddeeva::w(z) * expV ).real();
-			    omegaSin += std::sin( kR ) / kR * 2.0 * eta / pi_sqrt;
-			    double expVar = std::exp( -k2 * cutoff2 / 4.0 / eta2 ) - omegaSin * std::exp(-eta2);
-			    Ak.push_back( expVar / F0 / k2 );
-                        }
-                    }
-                }
-            }
-        }
-
-        assert(kvec.size() == Ak.size());
-
-        double E = 0.0;
-        for (size_t k = 0; k < kvec.size(); k++) {
-            std::complex<double> Qq(0.0, 0.0);
-            std::complex<double> Qmu(0.0, 0.0);
-            for (size_t i = 0; i < positions.size(); i++) {
-                double kDotR = kvec[k].dot(positions[i]);
-                double coskDotR = std::cos(kDotR);
-                double sinkDotR = std::sin(kDotR);
-                Qq += charges[i] * std::complex<double>(coskDotR, sinkDotR);
-                Qmu += dipoles[i].dot(kvec[k]) * std::complex<double>(-sinkDotR, coskDotR);
-            }
-            std::complex<double> Q = Qq + Qmu;
-            E += (powi(std::abs(Q), 2) * Ak[k]);
-        }
-        return (E * 2.0 * pi / volume);
     }
 
     /**
