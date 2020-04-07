@@ -64,6 +64,10 @@ Class name                                      | _S(q)_
 [`EwaldT`]()                                    | ![equation](https://latex.codecogs.com/svg.latex?%5Cfrac%7B%5Ctext%7Berfc%7D%7B%5Cleft%28%5Ceta%20q%5Cright%29%7D%20-%20%5Ctext%7Berfc%7D%7B%5Cleft%28%5Ceta%5Cright%29%7D%20-%20%281-q%29%5Cfrac%7B2%5Ceta%7D%7B%5Csqrt%7B%5Cpi%7D%7D%5Cexp%7B%5Cleft%28-%5Ceta%5E2%5Cright%29%7D%7D%7B1%20-%20%5Ctext%7Berfc%7D%7B%5Cleft%28%5Ceta%5Cright%29%7D%20-%20%5Cfrac%7B2%5Ceta%7D%7B%5Csqrt%7B%5Cpi%7D%7D%5Cexp%7B%5Cleft%28-%5Ceta%5E2%5Cright%29%7D%7D)
 `Splined`                                       | Splined version of any of the above
 
+Here 
+
+![equation](https://latex.codecogs.com/svg.latex?q%3D%5Cfrac%7Br%7D%7BR_c%7D%5Cquad%5Cquad%20%5Ctilde%7Bq%7D%3D%5Cfrac%7B1-%5Cexp%282%5Ckappa%5E*q%29%7D%7B1-%5Cexp%282%5Ckappa%5E*%29%7D%20%5Cquad%5Cquad%20%5Ceta%20%3D%20%5Calpha%20R_c%20%5Cquad%5Cquad%20%5Ckappa%5E*%3D%5Ckappa%20R_c.) 
+
 ### Units
 
 It is vital that the units of the input parameters and function input values are consistent, such that correct output units are retrieved.
