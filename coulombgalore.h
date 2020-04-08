@@ -1179,7 +1179,6 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
      * @param volume Volume of unit-cell, UNIT: [ ( input length )^3 ]
      * @returns energy, UNIT: [ ( input charge )^2 / ( input length ) ]
      * @note DOI:10.1021/jp951011v
-     * @warning Not tested!
      */
     inline double neutralization_energy(const std::vector<double> &charges, double volume) const override {
         double charge_total = 0.0;
