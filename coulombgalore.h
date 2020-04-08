@@ -1254,7 +1254,7 @@ class Ewald : public EnergyImplementation<Ewald> {
         zeta = cutoff / debye_length;
         zeta2 = zeta * zeta;
         zeta3 = zeta2 * zeta;
-        if(zeta < 1e-6) {
+        if(zeta < 1e-6) { // if close to zero the general expression numerically diverges, and this expresion is used instead
             chi = -pi * cutoff2 * ( 1.0 - std::erfc( eta ) * ( 1.0 - 2.0 * eta2 ) - 2.0 * eta * std::exp( -eta2 ) / pi_sqrt ) / eta2;
         } else {
             chi = 4.0 * ( 0.5 * ( 1.0 - zeta ) * std::erfc( eta + zeta / ( 2.0 * eta ) ) * std::exp( zeta ) + std::erf( eta ) * std::exp(-zeta2 / ( 4.0 * eta2 ) ) + 
