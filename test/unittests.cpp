@@ -488,6 +488,10 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.36159125));
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
 
+    std::vector<double> charges = {1.0, -1.0, 2.0, 3.0};
+    double volume = 2.0;
+    CHECK(pot.neutralization_energy(charges, volume) == Approx(-1963.341583564));
+
     testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
 
     double debye_length = 23.0;
@@ -501,6 +505,8 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     CHECK(potY.short_range_function_derivative(0.5) == Approx(-0.63444119));
     CHECK(potY.short_range_function_second_derivative(0.5) == Approx(4.423133599));
     CHECK(potY.short_range_function_third_derivative(0.5) == Approx(-19.85937171));
+
+    CHECK(potY.neutralization_energy(charges, volume) == Approx(-1917.674014375));
 }
 
 TEST_CASE("[CoulombGalore] Ewald (truncated Gaussian) real-space") {
@@ -519,20 +525,11 @@ TEST_CASE("[CoulombGalore] Ewald (truncated Gaussian) real-space") {
     CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.364180355));
     CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.56439607));
 
+    std::vector<double> charges = {1.0, -1.0, 2.0, 3.0};
+    double volume = 2.0;
+    CHECK(pot.neutralization_energy(charges, volume) == Approx(-1955.4692924725));
+
     testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
-/*
-    double debye_length = 23.0;
-    EwaldT potY(cutoff, alpha, eps_sur, debye_length);
-
-    CHECK(potY.self_energy({4.0, 0.0}) == Approx(-0.1493013040));
-    CHECK(potY.self_energy({0.0, 2.0}) == Approx(-0.0006704901976));
-
-    // Test short-ranged function
-    CHECK(potY.short_range_function(0.5) == Approx(0.07306333588));
-    CHECK(potY.short_range_function_derivative(0.5) == Approx(-0.63444119));
-    CHECK(potY.short_range_function_second_derivative(0.5) == Approx(4.423133599));
-    CHECK(potY.short_range_function_third_derivative(0.5) == Approx(-19.85937171));
-    */
 }
 
 TEST_CASE("[CoulombGalore] Poisson") {
