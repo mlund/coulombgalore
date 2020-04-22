@@ -36,6 +36,11 @@
             "scheme": "doi",
             "identifier": "10.1021/acs.jpca.0c01684",
             "relation": "isSupplementTo"
+        },
+        {
+            "scheme": "doi",
+            "identifier": "10.1021/acs.jctc.9b01003",
+            "relation": "isSupplementTo"
         }
     ],
     "license": "mit-license",
