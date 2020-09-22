@@ -914,7 +914,7 @@ TEST_CASE("[CoulombGalore] createScheme") {
     CHECK(pot->ion_potential(zA, r.norm()) == Approx(0.003344219306));
 
     pot = createScheme(
-            nlohmann::json({{"type", "poisson"}, {"cutoff", cutoff}, {"C", 3}, {"D", 3}, {"debyelength", 23}}));
+        nlohmann::json({{"type", "poisson"}, {"cutoff", cutoff}, {"C", 3}, {"D", 3}, {"debyelength", 23}}));
     CHECK(pot->ion_potential(zA, cutoff) == Approx(0.0));
     CHECK(pot->ion_potential(zA, r.norm()) == Approx(0.003344219306));
 #endif

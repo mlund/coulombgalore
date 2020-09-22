@@ -1377,7 +1377,7 @@ namespace CoulombGalore {
             }
             assert(kvec.size() == Ak.size());
         }
-
+        
         /**
          * @brief Reciprocal-space force
          * @param positions Positions of particles
