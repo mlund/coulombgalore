@@ -1446,7 +1446,7 @@ class Ewald : public EnergyImplementation<Ewald> {
      * @param kvec Vector of k-vectors
      */
     template <typename Positions, typename Charges, typename Dipoles>
-    std::complex<double> calcQ(Positions &positions, Charges &charges, Dipoles &dipoles, const vec3 kvec) const {
+    std::complex<double> calcQ(Positions &positions, Charges &charges, Dipoles &dipoles, const vec3& kvec) const {
         std::complex<double> Qq(0.0, 0.0);
         std::complex<double> Qmu(0.0, 0.0);
         for (size_t i = 0; i < positions.size(); i++) {
@@ -1650,7 +1650,7 @@ class Ewald : public EnergyImplementation<Ewald> {
         assert(positions.size() == charges.size());
         assert(positions.size() == dipoles.size());
 
-        double volume = unitcell_dimensions[0] * unitcell_dimensions[1] * unitcell_dimensions[2];
+        const double volume = unitcell_dimensions.prod();
         std::vector<vec3> kvec;
         std::vector<double> Ak;
         // kvec.reserve( expected_size_of_kvec ); // speeds up push_back below
@@ -1669,6 +1669,34 @@ class Ewald : public EnergyImplementation<Ewald> {
         }
         return (-field * 4.0 * pi / volume);
     }
+
+    template <typename Positions, typename Charges, typename Dipoles>
+    vec3 reciprocal_field(const EwaldData &data, Positions &positions, Charges &charges, Dipoles &dipoles, const vec3 &position) {
+
+        assert(positions.size() == charges.size());
+        assert(positions.size() == dipoles.size());
+
+        const double volume = data.box_length.prod();
+        std::vector<vec3> kvec;
+        std::vector<double> Ak;
+        // kvec.reserve( expected_size_of_kvec ); // speeds up push_back below
+        // Ak.reserve( expected_size_of_Ak ); // speeds up push_back below
+        updateAllWaveVectors(kvec, Ak, data.box_length, data.reciprocal_cutoff);
+
+        vec3 field = {0.0, 0.0, 0.0};
+        for (int i = 0; i < data.k_vectors.cols(); i++) {
+            const auto& k_vector = data.k_vectors.col(i);
+            const auto Q = calcQ(positions, charges, dipoles, k_vector);
+            double kDotR = k_vector.dot(position);
+            double coskDotR = std::cos(kDotR);
+            double sinkDotR = std::sin(kDotR);
+            auto expKrii = std::complex<double>(-sinkDotR, coskDotR);
+            auto repart = expKrii * std::conj(Q);
+            field += std::real(repart) * k_vector * data.Aks[i];
+        }
+        return (-field * 4.0 * pi / volume);
+    }
+
 
     /**
      * @brief Surface field-term
@@ -1715,21 +1743,21 @@ class Ewald : public EnergyImplementation<Ewald> {
             const auto Q = calcQ(positions, charges, dipoles, reciprocal_vectors[k]);
             field += (powi(std::abs(Q), 2) * Ak[k]);
         }
-        const auto volume = box_length[0] * box_length[1] * box_length[2];
-        return (field * 2.0 * pi / volume);
+        const auto volume = box_length.prod();
+        return 2.0 * pi / volume * field;
     }
 
     template <typename Positions, typename Charges, typename Dipoles>
-    double reciprocal_energy(EwaldData &data, Positions &positions, Charges &charges, Dipoles &dipoles) {
+    double reciprocal_energy(const EwaldData &data, Positions &positions, Charges &charges, Dipoles &dipoles) {
         assert(positions.size() == charges.size());
         assert(positions.size() == dipoles.size());
         double field = 0.0;
-        for (int i = 0; i < data.k_vectors.size(); i++) {
-            const auto Q = calcQ(positions.begin(), positions.end(), charges.begin(), data.k_vectors[i]);
-            field += (powi(std::abs(Q), 2) * data.Aks[i]);
+        for (int i = 0; i < data.k_vectors.cols(); i++) {
+            const auto Qabs = std::abs(calcQ(positions, charges, dipoles, data.k_vectors.col(i)));
+            field += Qabs * Qabs * data.Aks[i];
         }
-        const auto volume = data.box_length[0] * data.box_length[1] * data.box_length[2];
-        return (field * 2.0 * pi / volume);
+        const auto volume = data.box_length.prod();
+        return 2.0 * pi / volume * field;
     }
 
     /**
@@ -1754,7 +1782,7 @@ class Ewald : public EnergyImplementation<Ewald> {
         const auto sqDipoles = position_times_charge_sum.dot(position_times_charge_sum) +
                                2.0 * position_times_charge_sum.dot(dipole_sum) + dipole_sum.dot(dipole_sum);
 
-        return (2.0 * pi / (2.0 * surface_dielectric_constant + 1.0) / volume * sqDipoles);
+        return 2.0 * pi / (2.0 * surface_dielectric_constant + 1.0) / volume * sqDipoles;
     }
 
 #ifdef NLOHMANN_JSON_HPP

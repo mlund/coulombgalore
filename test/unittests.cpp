@@ -552,13 +552,16 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     CHECK(reciprocal_energy == Approx(0.1584768302));
     CHECK(real_energy+self_energy+surface_energy+reciprocal_energy == Approx(-1.0021255));
 
+    EwaldData data;
+    data.surface_dielectric_constant = eps_sur;
+    data.cutoff = cutoff;
+    data.reciprocal_cutoff = nmax;
+    data.alpha = alpha;
+    pot_reci_inf.updateBox(data, L);
+
     SUBCASE("EwaldData energy") {
-        EwaldData data;
-        data.surface_dielectric_constant = eps_sur;
-        data.cutoff = cutoff;
-        data.reciprocal_cutoff = nmax;
-        data.alpha = alpha;
-        pot_reci_inf.updateBox(data, L);
+        double reciprocal_energy = pot_reci_inf.reciprocal_energy(data, positions, charges, dipoles);
+        CHECK(reciprocal_energy == Approx(0.1584768302));
     }
 
     vec3 real_force = pot_reci_inf.ion_ion_force(qA, qB, rAB);
@@ -587,6 +590,13 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     CHECK(reciprocal_field[0] == Approx(0.2617988467));
     CHECK(reciprocal_field[1] == Approx(0.0));
     CHECK(reciprocal_field[2] == Approx(0.0));
+
+    SUBCASE("EwaldData field") {
+        auto reciprocal_field = pot_reci_inf.reciprocal_field(data, positions, charges, dipoles, rA);
+        CHECK(reciprocal_field[0] == Approx(0.2617988467));
+        CHECK(reciprocal_field[1] == Approx(0.0));
+        CHECK(reciprocal_field[2] == Approx(0.0));
+    }
 
     vec3 self_field = pot_reci_inf.self_field({zeros, dipoles.at(1)});
     CHECK(self_field[0] == Approx(0.0));
