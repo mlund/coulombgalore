@@ -33,6 +33,7 @@
 #include <functional>
 #include <memory>
 #include <Eigen/Core>
+#include <Eigen/Dense>
 
 /** modern json for c++ added "_" suffix at around ~version 3.6 */
 #ifdef NLOHMANN_JSON_HPP_
@@ -1488,100 +1489,92 @@ class Ewald : public EnergyImplementation<Ewald> {
     }
 
     // @todo incomplete; mostly copied from faunus
-    inline void updateBox(EwaldData &d, const vec3 &box_length) const {
+    inline void updateBox(EwaldData &data, const vec3 &box_length) const {
 
-        auto inside_cutoff = [cutoff_squared = d.reciprocal_cutoff * d.reciprocal_cutoff](auto nx, auto ny, auto nz) {
+        auto inside_cutoff = [cutoff_squared = data.reciprocal_cutoff * data.reciprocal_cutoff](auto nx, auto ny, auto nz) {
             const auto r = nx * nx + ny * ny + nz * nz;
             return (r > 0 && r <= cutoff_squared);
         }; // lambda to determine if wave-vector is within spherical cut-off
 
-        d.box_length = box_length;
-        d.check_k2_zero = 0.1 * std::pow(2 * pi / d.box_length.maxCoeff(), 2);
-        d.num_kvectors = std::pow(2 * d.reciprocal_cutoff + 1, 3) - 1;
-        if (d.num_kvectors == 0) {
-            d.k_vectors.resize(3, 1);
-            d.k_vectors.col(0) = vec3(1, 0, 0); // Just so it is not the zero-vector
-            d.Aks.resize(1);
-            d.Aks[0] = 0;
-            d.num_kvectors = 1;
-            d.Q_ion.resize(1);
-            d.Q_dipole.resize(1);
+        data.box_length = box_length;
+        data.check_k2_zero = 0.1 * std::pow(2 * pi / data.box_length.maxCoeff(), 2);
+        data.num_kvectors = std::pow(2 * data.reciprocal_cutoff + 1, 3) - 1;
+        if (data.num_kvectors == 0) {
+            data.k_vectors.resize(3, 1);
+            data.k_vectors.col(0) = vec3(1.0, 0.0, 0.0); // Just so it is not the zero-vector
+            data.Aks.resize(1);
+            data.Aks[0] = 0;
+            data.num_kvectors = 1;
+            data.Q_ion.resize(1);
+            data.Q_dipole.resize(1);
         } else {
-            d.k_vectors.resize(3, d.num_kvectors);
-            d.Aks.resize(d.num_kvectors);
-            d.k_vectors.setZero();
-            d.Aks.setZero();
-            d.num_kvectors = 0;
-            const vec3 two_pi_inverse_box_length = 2.0 * pi * d.box_length.inverse();
-            for (int nx = -d.reciprocal_cutoff; nx < d.reciprocal_cutoff + 1; nx++) {
-                for (int ny = -d.reciprocal_cutoff; ny < d.reciprocal_cutoff + 1; ny++) {
-                    for (int nz = -d.reciprocal_cutoff; nz < d.reciprocal_cutoff + 1; nz++) {
+            data.k_vectors.resize(3, data.num_kvectors);
+            data.k_vectors.setZero();
+            data.Aks.resize(data.num_kvectors);
+            data.Aks.setZero();
+            data.num_kvectors = 0;
+            const vec3 two_pi_inverse_box_length = 2.0 * pi * data.box_length.cwiseInverse();
+            for (int nx = -data.reciprocal_cutoff; nx < data.reciprocal_cutoff + 1; nx++) {
+                for (int ny = -data.reciprocal_cutoff; ny < data.reciprocal_cutoff + 1; ny++) {
+                    for (int nz = -data.reciprocal_cutoff; nz < data.reciprocal_cutoff + 1; nz++) {
                         if (inside_cutoff(nx, ny, nz)) {
-                            d.k_vectors.col(d.num_kvectors++) =
+                            data.k_vectors.col(data.num_kvectors++) =
                                 two_pi_inverse_box_length.cwiseProduct(vec3(nx, ny, nz));
                         }
                     }
                 }
             }
-            d.Q_ion.resize(d.num_kvectors);
-            d.Q_dipole.resize(d.num_kvectors);
-            d.Aks.conservativeResize(d.num_kvectors);          // shrink if needed
-            d.k_vectors.conservativeResize(3, d.num_kvectors); // shrink if needed
+            data.Q_ion.resize(data.num_kvectors);
+            data.Q_dipole.resize(data.num_kvectors);
+            data.Aks.conservativeResize(data.num_kvectors);          // shrink if needed
+            data.k_vectors.conservativeResize(3, data.num_kvectors); // shrink if needed
 
-            for (int i = 0; i < d.Aks.size(); i++) {
-                const auto k2 = d.k_vectors.col(i).squaredNorm() + zeta2 / cutoff_squared;
-                d.Aks[i] = std::exp(-(k2 * cutoff_squared + zeta2) / (4.0 * eta2)) / k2;
+            for (int i = 0; i < data.Aks.size(); i++) {
+                const auto k2 = data.k_vectors.col(i).squaredNorm() + zeta2 / cutoff_squared;
+                data.Aks[i] = std::exp(-(k2 * cutoff_squared + zeta2) / (4.0 * eta2)) / k2;
             }
         }
     }
 
-    /**
-     * @brief Update a range of charges
-     * @param data Ewald data object to update
-     * @param begin Iterator to first position
-     * @param end Iterator to end position
-     * @param charge_iter Iterator to first charge_iter (undefined behavior of length mismatch with positions)
-     * @todo Untested
-     */
-    template <typename PositionIterator, typename ChargeIterator>
-    inline void updateParticles(EwaldData &data, PositionIterator begin, PositionIterator end,
-                                ChargeIterator charge_iter) {
-        for (int i = 0; i < data.k_vectors.cols(); i++) {
-            EwaldData::Tcomplex Q(0, 0);
-            for (auto position = begin; position != end; position++) {
-                const auto qr = data.k_vectors.col(i).dot(*position);
-                Q += (*charge_iter) * EwaldData::Tcomplex(std::cos(qr),
-                                                          std::sin(qr));
-                charge_iter++;
-            }
-            data.Q_ion[i] = Q;
-        }
-    }
-
-    /**
-     * @brief Partial update of a range of particles, subtracting previous contributions
-     * @param data Ewald data to operate on
-     * @param begin Begin iterator to new particles
-     * @param end End iterator to new particles
-     * @param old_begin Begin iterator to old particles
-     * @param old_end End iterator to old particles
-     */
-    template <typename ParticleRange, typename OldParticleRange>
-    inline void updateComplex(EwaldData &data, ParticleRange &particles, OldParticleRange &old_particles) {
-        auto calcQ = [](const auto &k_vector, const auto &particle) {
-            const auto qr = k_vector.dot(particle.pos);
-            return particle.charge * EwaldData::Tcomplex(std::cos(qr), std::sin(qr));
+    template <class PositionIterator, class ChargeIterator>
+    EwaldData::Tcomplex calcQ(PositionIterator begin, PositionIterator end, ChargeIterator charge_iter,
+                              const vec3 &k_vector) const {
+        double cos_sum = 0.0;
+        double sin_sum = 0.0;
+        for (auto position = begin; position != end; position++) {
+            const double k_dot_r = k_vector.dot(*position);
+            cos_sum += (*charge_iter) * std::cos(k_dot_r);
+            sin_sum += (*charge_iter) * std::sin(k_dot_r);
+            charge_iter++;
         };
+        return EwaldData::Tcomplex(cos_sum, sin_sum);
+    }
+
+    template <class PositionIterator, class ChargeIterator>
+    void updateComplex(EwaldData &data, PositionIterator begin, PositionIterator end,
+                       ChargeIterator charge_iter) const {
         for (int i = 0; i < data.k_vectors.cols(); i++) {
-            EwaldData::Tcomplex Q(0, 0);
-            const auto &k = data.k_vectors.col(i);
-            for (const auto& particle : particles) {
-                Q += calcQ(k, particle);
-            }
-            for (const auto& particle : old_particles) {
-                Q -= calcQ(k, particle);
-            }
-            data.Q_ion[i] = Q;
+            data.Q_ion[i] += calcQ(begin, end, charge_iter, data.k_vectors.col(i));
+        }
+    }
+
+    /**
+     * @brief Updates Q for a subset of point charges; subtracts old contribution
+     * @param data Ewald data to update
+     * @param begin begin iterator current position
+     * @param end end iterator to current position
+     * @param charge_iter begin iterator to current charge
+     * @param old_begin begin iterator to old position
+     * @param old_end end iterator to old position
+     * @param old_charge_iter begin iterator to old charge
+     */
+    template <class PositionIterator, class ChargeIterator, class OldPositionIterator, class OldChargeIterator>
+    void updateComplex(EwaldData &data, PositionIterator begin, PositionIterator end, ChargeIterator charge_iter,
+                       OldPositionIterator old_begin, OldPositionIterator old_end,
+                       OldChargeIterator old_charge_iter) const {
+        for (int i = 0; i < data.k_vectors.cols(); i++) {
+            data.Q_ion[i] += calcQ(begin, end, charge_iter, data.k_vectors.col(i)) -
+                             calcQ(old_begin, old_end, old_charge_iter, data.k_vectors.col(i));
         }
     }
 
@@ -1726,6 +1719,19 @@ class Ewald : public EnergyImplementation<Ewald> {
         return (field * 2.0 * pi / volume);
     }
 
+    template <typename Positions, typename Charges, typename Dipoles>
+    double reciprocal_energy(EwaldData &data, Positions &positions, Charges &charges, Dipoles &dipoles) {
+        assert(positions.size() == charges.size());
+        assert(positions.size() == dipoles.size());
+        double field = 0.0;
+        for (int i = 0; i < data.k_vectors.size(); i++) {
+            const auto Q = calcQ(positions.begin(), positions.end(), charges.begin(), data.k_vectors[i]);
+            field += (powi(std::abs(Q), 2) * data.Aks[i]);
+        }
+        const auto volume = data.box_length[0] * data.box_length[1] * data.box_length[2];
+        return (field * 2.0 * pi / volume);
+    }
+
     /**
      * @brief Surface energy-term
      * @param positions Positions of particles
@@ -1787,7 +1793,7 @@ class EwaldT : public EnergyImplementation<EwaldT> {
      * @param alpha damping-parameter
      */
     inline EwaldT(double cutoff, double alpha, double surface_dielectric_constant = infinity,
-                  double debye_length = infinity)
+                  [[maybe_unused]]double debye_length = infinity)
         : EnergyImplementation(Scheme::ewaldt, cutoff), surface_dielectric_constant(surface_dielectric_constant) {
         name = "EwaldT real-space";
         has_dipolar_selfenergy = true;

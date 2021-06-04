@@ -552,6 +552,15 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     CHECK(reciprocal_energy == Approx(0.1584768302));
     CHECK(real_energy+self_energy+surface_energy+reciprocal_energy == Approx(-1.0021255));
 
+    SUBCASE("EwaldData energy") {
+        EwaldData data;
+        data.surface_dielectric_constant = eps_sur;
+        data.cutoff = cutoff;
+        data.reciprocal_cutoff = nmax;
+        data.alpha = alpha;
+        pot_reci_inf.updateBox(data, L);
+    }
+
     vec3 real_force = pot_reci_inf.ion_ion_force(qA, qB, rAB);
     CHECK(real_force[0] == Approx(0.7338876643));
     CHECK(real_force[1] == Approx(0.0));
