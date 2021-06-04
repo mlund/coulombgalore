@@ -1307,6 +1307,49 @@ class Plain : public EnergyImplementation<Plain> {
 // -------------- Ewald real-space (using Gaussian) ---------------
 
 /**
+ * @brief Data class for Ewald k-space calculations
+ *
+ * Currently, the Eigen policies map to the non-eigen
+ * variants, e.g. `PBCEigen == PBC`.
+ *
+ * Related reading:
+ * - PBC Ewald (DOI:10.1063/1.481216)
+ * - IPBC Ewald (DOI:10/css8)
+ * - Update optimization (DOI:10.1063/1.481216, Eq. 24)
+ */
+struct EwaldData {
+    typedef std::complex<double> Tcomplex;
+    Eigen::Matrix3Xd k_vectors;               //!< k-vectors, 3xK
+    Eigen::VectorXd Aks;                      //!< 1xK for update optimization (see Eq.24, DOI:10.1063/1.481216)
+    Eigen::VectorXcd Q_ion;                   //!< Complex 1xK vectors
+    Eigen::VectorXcd Q_dipole;                //!< Complex 1xK vectors
+    double cutoff = 0.0;                      //!< Real-space cutoff
+    int reciprocal_cutoff = 0.0;              //!< Inverse space cutoff
+    double surface_dielectric_constant = 0.0; //!< Surface dielectric constant;
+    double bjerrum_length = 0.0;              //!< Bjerrum length
+    double kappa = 0.0;                       //!< Inverse Debye screening length
+    double kappa_squared = 0.0;               //!< Squared inverse Debye screening length
+    double alpha = 0.0;
+    double const_inf = 0.0;
+    double check_k2_zero = 0.0;
+    bool use_spherical_sum = true;
+    int num_kvectors = 0;
+    vec3 box_length = {0.0, 0.0, 0.0};                         //!< Box dimensions
+    enum Policies { PBC, PBCEigen, IPBC, IPBCEigen, INVALID }; //!< Possible k-space updating schemes
+    Policies policy = PBC;                                     //!< Policy for updating k-space
+};
+
+#ifdef NLOHMANN_JSON_HPP
+NLOHMANN_JSON_SERIALIZE_ENUM(EwaldData::Policies, {
+                                                      {EwaldData::INVALID, nullptr},
+                                                      {EwaldData::PBC, "PBC"},
+                                                      {EwaldData::PBCEigen, "PBCEigen"},
+                                                      {EwaldData::IPBC, "IPBC"},
+                                                      {EwaldData::IPBCEigen, "IPBCEigen"},
+                                                  })
+#endif
+
+/**
  * @brief Ewald real-space scheme using a Gaussian screening-function.
  *
  * @note The implemented charge-compensation for Ewald differes from that of in DOI:10.1021/ct400626b where chi = -pi /
@@ -1401,49 +1444,146 @@ class Ewald : public EnergyImplementation<Ewald> {
      * @param dipoles Dipole moments of particles
      * @param kvec Vector of k-vectors
      */
-    inline std::complex<double> calcQ(const std::vector<vec3> &positions, const std::vector<double> &charges,
-                                      const std::vector<vec3> &dipoles, const vec3 kvec) const {
+    template <typename Positions, typename Charges, typename Dipoles>
+    std::complex<double> calcQ(Positions &positions, Charges &charges, Dipoles &dipoles, const vec3 kvec) const {
         std::complex<double> Qq(0.0, 0.0);
         std::complex<double> Qmu(0.0, 0.0);
         for (size_t i = 0; i < positions.size(); i++) {
-            double kDotR = kvec.dot(positions[i]);
-            double coskDotR = std::cos(kDotR);
-            double sinkDotR = std::sin(kDotR);
+            const double kDotR = kvec.dot(positions[i]);
+            const double coskDotR = std::cos(kDotR);
+            const double sinkDotR = std::sin(kDotR);
             Qq += charges[i] * std::complex<double>(coskDotR, sinkDotR);
             Qmu += dipoles[i].dot(kvec) * std::complex<double>(-sinkDotR, coskDotR);
         }
-        std::complex<double> Q = Qq + Qmu;
-        return Q;
+        return Qq + Qmu;
     }
 
     /**
-     * @brief Produce k-vectors and correpsonding A_k values
-     * @param reciprocal_vectors Vector of k-vectors
-     * @param Ak Vector of Ak values
-     * @param box_dimensions Dimensions of unit-cell
+     * @brief Produce k-vectors and corresponding A_k values
+     * @param k_vectors Vector of k-vectors (@todo should be Eigen array)
+     * @param Aks Vector of Aks values (@todo should be Eigen matrix)
+     * @param box_length Dimensions of unit-cell
      * @param reciprocal_cutoff Cut-off in reciprocal-space
      * @note Uses spherical cut-off in summation
+     * @todo Take EwaldData object as argument instead of k_vectors and Aks
+     *       See e.g. Faunus::Energy::PolicyIonIon::updateBox()
      */
-    inline void prodKAk(std::vector<vec3> &reciprocal_vectors, std::vector<double> &Ak, const vec3 &box_dimensions,
-                        int reciprocal_cutoff) {
+    inline void updateAllWaveVectors(std::vector<vec3> &k_vectors, std::vector<double> &Aks, const vec3 &box_length,
+                                     int reciprocal_cutoff) {
+        const auto reciprocal_cutoff_squared = reciprocal_cutoff * reciprocal_cutoff;
         for (int nx = -reciprocal_cutoff; nx < reciprocal_cutoff + 1; nx++) {
             for (int ny = -reciprocal_cutoff; ny < reciprocal_cutoff + 1; ny++) {
                 for (int nz = -reciprocal_cutoff; nz < reciprocal_cutoff + 1; nz++) {
-                    vec3 nv = {double(nx), double(ny), double(nz)};
-                    const double nv2 = nv.squaredNorm();
-                    if (nv2 > 0) {
-                        if (nv2 <= reciprocal_cutoff * reciprocal_cutoff) {
-                            vec3 kv = {2.0 * pi * nx / box_dimensions[0], 2.0 * pi * ny / box_dimensions[1],
-                                       2.0 * pi * nz / box_dimensions[2]};
-                            reciprocal_vectors.push_back(kv);
-                            const double k2 = kv.squaredNorm() + zeta2 / cutoff_squared;
-                            Ak.push_back(std::exp(-(k2 * cutoff_squared + zeta2) / 4.0 / eta2) / k2);
-                        }
+                    vec3 nv = {nx, ny, nz};
+                    const auto nv2 = nv.squaredNorm();
+                    if (nv2 > 0 && nv2 <= reciprocal_cutoff_squared) {
+                        vec3 kv = 2.0 * pi * nv.cwiseQuotient(box_length);
+                        k_vectors.push_back(kv);
+                        const double k2 = kv.squaredNorm() + zeta2 / cutoff_squared;
+                        Aks.push_back(std::exp(-(k2 * cutoff_squared + zeta2) / 4.0 / eta2) / k2);
                     }
                 }
             }
         }
-        assert(reciprocal_vectors.size() == Ak.size());
+    }
+
+    // @todo incomplete; mostly copied from faunus
+    inline void updateBox(EwaldData &d, const vec3 &box_length) const {
+
+        auto inside_cutoff = [cutoff_squared = d.reciprocal_cutoff * d.reciprocal_cutoff](auto nx, auto ny, auto nz) {
+            const auto r = nx * nx + ny * ny + nz * nz;
+            return (r > 0 && r <= cutoff_squared);
+        }; // lambda to determine if wave-vector is within spherical cut-off
+
+        d.box_length = box_length;
+        d.check_k2_zero = 0.1 * std::pow(2 * pi / d.box_length.maxCoeff(), 2);
+        d.num_kvectors = std::pow(2 * d.reciprocal_cutoff + 1, 3) - 1;
+        if (d.num_kvectors == 0) {
+            d.k_vectors.resize(3, 1);
+            d.k_vectors.col(0) = vec3(1, 0, 0); // Just so it is not the zero-vector
+            d.Aks.resize(1);
+            d.Aks[0] = 0;
+            d.num_kvectors = 1;
+            d.Q_ion.resize(1);
+            d.Q_dipole.resize(1);
+        } else {
+            d.k_vectors.resize(3, d.num_kvectors);
+            d.Aks.resize(d.num_kvectors);
+            d.k_vectors.setZero();
+            d.Aks.setZero();
+            d.num_kvectors = 0;
+            const vec3 two_pi_inverse_box_length = 2.0 * pi * d.box_length.inverse();
+            for (int nx = -d.reciprocal_cutoff; nx < d.reciprocal_cutoff + 1; nx++) {
+                for (int ny = -d.reciprocal_cutoff; ny < d.reciprocal_cutoff + 1; ny++) {
+                    for (int nz = -d.reciprocal_cutoff; nz < d.reciprocal_cutoff + 1; nz++) {
+                        if (inside_cutoff(nx, ny, nz)) {
+                            d.k_vectors.col(d.num_kvectors++) =
+                                two_pi_inverse_box_length.cwiseProduct(vec3(nx, ny, nz));
+                        }
+                    }
+                }
+            }
+            d.Q_ion.resize(d.num_kvectors);
+            d.Q_dipole.resize(d.num_kvectors);
+            d.Aks.conservativeResize(d.num_kvectors);          // shrink if needed
+            d.k_vectors.conservativeResize(3, d.num_kvectors); // shrink if needed
+
+            for (int i = 0; i < d.Aks.size(); i++) {
+                const auto k2 = d.k_vectors.col(i).squaredNorm() + zeta2 / cutoff_squared;
+                d.Aks[i] = std::exp(-(k2 * cutoff_squared + zeta2) / (4.0 * eta2)) / k2;
+            }
+        }
+    }
+
+    /**
+     * @brief Update a range of charges
+     * @param data Ewald data object to update
+     * @param begin Iterator to first position
+     * @param end Iterator to end position
+     * @param charge_iter Iterator to first charge_iter (undefined behavior of length mismatch with positions)
+     * @todo Untested
+     */
+    template <typename PositionIterator, typename ChargeIterator>
+    inline void updateParticles(EwaldData &data, PositionIterator begin, PositionIterator end,
+                                ChargeIterator charge_iter) {
+        for (int i = 0; i < data.k_vectors.cols(); i++) {
+            EwaldData::Tcomplex Q(0, 0);
+            for (auto position = begin; position != end; position++) {
+                const auto qr = data.k_vectors.col(i).dot(*position);
+                Q += (*charge_iter) * EwaldData::Tcomplex(std::cos(qr),
+                                                          std::sin(qr));
+                charge_iter++;
+            }
+            data.Q_ion[i] = Q;
+        }
+    }
+
+    /**
+     * @brief Partial update of a range of particles, subtracting previous contributions
+     * @param data Ewald data to operate on
+     * @param begin Begin iterator to new particles
+     * @param end End iterator to new particles
+     * @param old_begin Begin iterator to old particles
+     * @param old_end End iterator to old particles
+     */
+    template <typename ParticleIterator, typename OldParticleIterator>
+    inline void updateComplex(EwaldData &data, ParticleIterator begin, ParticleIterator end,
+                                OldParticleIterator old_begin, OldParticleIterator old_end) {
+        auto calcQ = [](const auto &k_vector, const auto &particle) {
+            const auto qr = k_vector.dot(particle.pos);
+            return particle.charge * EwaldData::Tcomplex(std::cos(qr), std::sin(qr));
+        };
+        for (int i = 0; i < data.k_vectors.cols(); i++) {
+            EwaldData::Tcomplex Q(0, 0);
+            const auto &k = data.k_vectors.col(i);
+            for (auto particle = begin; particle != end; particle++) {
+                Q += calcQ(k, *particle);
+            }
+            for (auto particle = old_begin; particle != old_end; particle++) {
+                Q -= calcQ(k, *particle);
+            }
+            data.Q_ion[i] = Q;
+        }
     }
 
     /**
@@ -1458,9 +1598,9 @@ class Ewald : public EnergyImplementation<Ewald> {
      * @param dipole_moment Dipole moment of particle
      * @note Uses spherical cut-off in summation
      */
-    inline vec3 reciprocal_force(const std::vector<vec3> &positions, const std::vector<double> &charges,
-                                 const std::vector<vec3> &dipoles, const vec3 &box_dimensions, int reciprocal_cutoff,
-                                 const vec3 &position, double charge, vec3 &dipole_moment) {
+    template <typename Positions, typename Charges, typename Dipoles>
+    vec3 reciprocal_force(Positions &positions, Charges &charges, Dipoles &dipoles, const vec3 &box_dimensions,
+                          int reciprocal_cutoff, const vec3 &position, double charge, vec3 &dipole_moment) {
 
         assert(positions.size() == charges.size());
         assert(positions.size() == dipoles.size());
@@ -1470,17 +1610,17 @@ class Ewald : public EnergyImplementation<Ewald> {
         std::vector<double> Ak;
         // reciprocal_vectors.reserve( expected_size_of_kvec ); // speeds up push_back below
         // Ak.reserve( expected_size_of_Ak ); // speeds up push_back below
-        prodKAk(reciprocal_vectors, Ak, box_dimensions, reciprocal_cutoff);
+        updateAllWaveVectors(reciprocal_vectors, Ak, box_dimensions, reciprocal_cutoff);
 
         vec3 force = {0.0, 0.0, 0.0};
         for (size_t k = 0; k < reciprocal_vectors.size(); k++) {
-            std::complex<double> Q = calcQ(positions, charges, dipoles, reciprocal_vectors[k]);
-            double kDotR = reciprocal_vectors[k].dot(position);
-            double coskDotR = std::cos(kDotR);
-            double sinkDotR = std::sin(kDotR);
-            std::complex<double> expKri = std::complex<double>(coskDotR, sinkDotR);
-            std::complex<double> qmu = std::complex<double>(-dipole_moment.dot(reciprocal_vectors[k]), charge);
-            std::complex<double> repart = expKri * qmu * std::conj(Q);
+            const auto Q = calcQ(positions, charges, dipoles, reciprocal_vectors[k]);
+            const double kDotR = reciprocal_vectors[k].dot(position);
+            const double coskDotR = std::cos(kDotR);
+            const double sinkDotR = std::sin(kDotR);
+            const auto expKri = std::complex<double>(coskDotR, sinkDotR);
+            const auto qmu = std::complex<double>(-dipole_moment.dot(reciprocal_vectors[k]), charge);
+            const auto repart = expKri * qmu * std::conj(Q);
             force += std::real(repart) * reciprocal_vectors[k] * Ak[k];
         }
         return (-force * 4.0 * pi / volume);
@@ -1495,8 +1635,9 @@ class Ewald : public EnergyImplementation<Ewald> {
      * @param charge Charge of particle
      * @warning Only works for charges
      */
-    inline vec3 surface_force(const std::vector<vec3> &positions, const std::vector<double> &charges,
-                              const std::vector<vec3> &dipoles, double unitcell_volume, double charge) const {
+    template <typename Positions, typename Charges, typename Dipoles>
+    vec3 surface_force(Positions &positions, Charges &charges, Dipoles &dipoles, double unitcell_volume,
+                       double charge) const {
         return charge * surface_field(positions, charges, dipoles, unitcell_volume);
     }
 
@@ -1510,9 +1651,9 @@ class Ewald : public EnergyImplementation<Ewald> {
      * @param position Evaluation position
      * @note Uses spherical cut-off in summation
      */
-    inline vec3 reciprocal_field(const std::vector<vec3> &positions, const std::vector<double> &charges,
-                                 const std::vector<vec3> &dipoles, const vec3 &unitcell_dimensions,
-                                 int reciprocal_cutoff, const vec3 &position) {
+    template <typename Positions, typename Charges, typename Dipoles>
+    vec3 reciprocal_field(Positions &positions, Charges &charges, Dipoles &dipoles, const vec3 &unitcell_dimensions,
+                          int reciprocal_cutoff, const vec3 &position) {
 
         assert(positions.size() == charges.size());
         assert(positions.size() == dipoles.size());
@@ -1522,7 +1663,7 @@ class Ewald : public EnergyImplementation<Ewald> {
         std::vector<double> Ak;
         // kvec.reserve( expected_size_of_kvec ); // speeds up push_back below
         // Ak.reserve( expected_size_of_Ak ); // speeds up push_back below
-        prodKAk(kvec, Ak, unitcell_dimensions, reciprocal_cutoff);
+        updateAllWaveVectors(kvec, Ak, unitcell_dimensions, reciprocal_cutoff);
 
         vec3 field = {0.0, 0.0, 0.0};
         for (size_t k = 0; k < kvec.size(); k++) {
@@ -1544,8 +1685,8 @@ class Ewald : public EnergyImplementation<Ewald> {
      * @param dipoles Dipole moments of particles
      * @param volume Volume of unit-cell
      */
-    inline vec3 surface_field(const std::vector<vec3> &positions, const std::vector<double> &charges,
-                              const std::vector<vec3> &dipoles, double volume) const {
+    template <typename Positions, typename Charges, typename Dipoles>
+    vec3 surface_field(Positions &positions, Charges &charges, Dipoles &dipoles, double volume) const {
         assert(positions.size() == charges.size());
         assert(positions.size() == dipoles.size());
         vec3 sum_r_charges_dipoles = {0.0, 0.0, 0.0};
@@ -1560,13 +1701,13 @@ class Ewald : public EnergyImplementation<Ewald> {
      * @param positions Positions of particles
      * @param charges Charges of particles
      * @param dipoles Dipole moments of particles
-     * @param box_dimensions Dimensions of unit-cell
+     * @param box_length Dimensions of unit-cell
      * @param reciprocal_cutoff Cut-off in reciprocal-space
      * @note Uses spherical cut-off in summation
      */
-    inline double reciprocal_energy(const std::vector<vec3> &positions, const std::vector<double> &charges,
-                                    const std::vector<vec3> &dipoles, const vec3 &box_dimensions,
-                                    int reciprocal_cutoff) {
+    template <typename Positions, typename Charges, typename Dipoles>
+    double reciprocal_energy(Positions &positions, Charges &charges, Dipoles &dipoles, const vec3 &box_length,
+                             int reciprocal_cutoff) {
 
         assert(positions.size() == charges.size());
         assert(positions.size() == dipoles.size());
@@ -1575,14 +1716,14 @@ class Ewald : public EnergyImplementation<Ewald> {
         std::vector<double> Ak;
         // reciprocal_vectors.reserve( expected_size_of_kvec ); // speeds up push_back below
         // Ak.reserve( expected_size_of_Ak ); // speeds up push_back below
-        prodKAk(reciprocal_vectors, Ak, box_dimensions, reciprocal_cutoff);
+        updateAllWaveVectors(reciprocal_vectors, Ak, box_length, reciprocal_cutoff);
 
         double field = 0.0;
         for (size_t k = 0; k < reciprocal_vectors.size(); k++) {
-            std::complex<double> Q = calcQ(positions, charges, dipoles, reciprocal_vectors[k]);
+            const auto Q = calcQ(positions, charges, dipoles, reciprocal_vectors[k]);
             field += (powi(std::abs(Q), 2) * Ak[k]);
         }
-        const auto volume = box_dimensions[0] * box_dimensions[1] * box_dimensions[2];
+        const auto volume = box_length[0] * box_length[1] * box_length[2];
         return (field * 2.0 * pi / volume);
     }
 
@@ -1593,14 +1734,16 @@ class Ewald : public EnergyImplementation<Ewald> {
      * @param dipoles Dipole moments of particles
      * @param volume Volume of unit-cell
      */
-    inline double surface_energy(const std::vector<vec3> &positions, const std::vector<double> &charges,
-                                 const std::vector<vec3> &dipoles, double volume) const {
+    template <typename Positions, typename Charges, typename Dipoles>
+    double surface_energy(Positions &positions, Charges &charges, Dipoles &dipoles, const double volume) const {
         assert(positions.size() == charges.size());
         assert(positions.size() == dipoles.size());
         vec3 position_times_charge_sum = {0.0, 0.0, 0.0};
-        vec3 dipole_sum = {0.0, 0.0, 0.0};
         for (size_t i = 0; i < positions.size(); i++) {
             position_times_charge_sum += positions[i] * charges[i];
+        }
+        vec3 dipole_sum = {0.0, 0.0, 0.0};
+        for (size_t i = 0; i < dipoles.size(); i++) {
             dipole_sum += dipoles[i];
         }
         const auto sqDipoles = position_times_charge_sum.dot(position_times_charge_sum) +
