@@ -1566,9 +1566,8 @@ class Ewald : public EnergyImplementation<Ewald> {
      * @param old_begin Begin iterator to old particles
      * @param old_end End iterator to old particles
      */
-    template <typename ParticleIterator, typename OldParticleIterator>
-    inline void updateComplex(EwaldData &data, ParticleIterator begin, ParticleIterator end,
-                                OldParticleIterator old_begin, OldParticleIterator old_end) {
+    template <typename ParticleRange, typename OldParticleRange>
+    inline void updateComplex(EwaldData &data, ParticleRange &particles, OldParticleRange &old_particles) {
         auto calcQ = [](const auto &k_vector, const auto &particle) {
             const auto qr = k_vector.dot(particle.pos);
             return particle.charge * EwaldData::Tcomplex(std::cos(qr), std::sin(qr));
@@ -1576,11 +1575,11 @@ class Ewald : public EnergyImplementation<Ewald> {
         for (int i = 0; i < data.k_vectors.cols(); i++) {
             EwaldData::Tcomplex Q(0, 0);
             const auto &k = data.k_vectors.col(i);
-            for (auto particle = begin; particle != end; particle++) {
-                Q += calcQ(k, *particle);
+            for (const auto& particle : particles) {
+                Q += calcQ(k, particle);
             }
-            for (auto particle = old_begin; particle != old_end; particle++) {
-                Q -= calcQ(k, *particle);
+            for (const auto& particle : old_particles) {
+                Q -= calcQ(k, particle);
             }
             data.Q_ion[i] = Q;
         }
