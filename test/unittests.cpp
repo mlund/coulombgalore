@@ -542,6 +542,7 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     eps_sur = infinity;
     Ewald pot_reci_inf(cutoff, alpha, eps_sur);
 
+    
     double real_energy = pot_reci_inf.ion_ion_energy(qA, qB, rAB.norm());
     double self_energy = pot_reci_inf.self_energy({qA*qA + qB*qB, 0.0});
     double surface_energy = pot_reci_inf.surface_energy(positions, charges, dipoles, volume);
@@ -557,7 +558,7 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     data.cutoff = cutoff;
     data.reciprocal_cutoff = nmax;
     data.alpha = alpha;
-    pot_reci_inf.updateBox(data, L);
+    pot_reci_inf.kvectorUpdate(data, L);
 
     SUBCASE("EwaldData energy") {
         double reciprocal_energy = pot_reci_inf.reciprocal_energy(data, positions, charges, dipoles);

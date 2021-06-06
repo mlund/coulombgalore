@@ -44,8 +44,9 @@
 namespace CoulombGalore {
 
 /** Typedef for 3D vector such a position or dipole moment */
-typedef Eigen::Vector3d vec3;
-typedef Eigen::Matrix3d mat33;
+using vec3 = Eigen::Vector3d;
+using mat33 = Eigen::Matrix3d;
+using Tcomplex = Eigen::VectorXcd::value_type;
 
 constexpr double infinity = std::numeric_limits<double>::infinity(); //!< Numerical infinity
 
@@ -1319,7 +1320,6 @@ class Plain : public EnergyImplementation<Plain> {
  * - Update optimization (DOI:10.1063/1.481216, Eq. 24)
  */
 struct EwaldData {
-    typedef std::complex<double> Tcomplex;
     Eigen::Matrix3Xd k_vectors;               //!< k-vectors, 3xK
     Eigen::VectorXd Aks;                      //!< 1xK for update optimization (see Eq.24, DOI:10.1063/1.481216)
     Eigen::VectorXcd Q_ion;                   //!< Complex 1xK vectors
@@ -1446,15 +1446,15 @@ class Ewald : public EnergyImplementation<Ewald> {
      * @param kvec Vector of k-vectors
      */
     template <typename Positions, typename Charges, typename Dipoles>
-    std::complex<double> calcQ(Positions &positions, Charges &charges, Dipoles &dipoles, const vec3& kvec) const {
-        std::complex<double> Qq(0.0, 0.0);
-        std::complex<double> Qmu(0.0, 0.0);
+    Tcomplex calcQ(Positions &positions, Charges &charges, Dipoles &dipoles, const vec3& kvec) const {
+        Tcomplex Qq(0.0, 0.0);
+        Tcomplex Qmu(0.0, 0.0);
         for (size_t i = 0; i < positions.size(); i++) {
-            const double kDotR = kvec.dot(positions[i]);
-            const double coskDotR = std::cos(kDotR);
-            const double sinkDotR = std::sin(kDotR);
-            Qq += charges[i] * std::complex<double>(coskDotR, sinkDotR);
-            Qmu += dipoles[i].dot(kvec) * std::complex<double>(-sinkDotR, coskDotR);
+            const auto kDotR = kvec.dot(positions[i]);
+            const auto coskDotR = std::cos(kDotR);
+            const auto sinkDotR = std::sin(kDotR);
+            Qq += charges[i] * Tcomplex(coskDotR, sinkDotR);
+            Qmu += dipoles[i].dot(kvec) * Tcomplex(-sinkDotR, coskDotR);
         }
         return Qq + Qmu;
     }
@@ -1467,7 +1467,7 @@ class Ewald : public EnergyImplementation<Ewald> {
      * @param reciprocal_cutoff Cut-off in reciprocal-space
      * @note Uses spherical cut-off in summation
      * @todo Take EwaldData object as argument instead of k_vectors and Aks
-     *       See e.g. Faunus::Energy::PolicyIonIon::updateBox()
+     *       See e.g. Faunus::Energy::PolicyIonIon::kvectorUpdate()
      */
     inline void updateAllWaveVectors(std::vector<vec3> &k_vectors, std::vector<double> &Aks, const vec3 &box_length,
                                      int reciprocal_cutoff) {
@@ -1489,7 +1489,7 @@ class Ewald : public EnergyImplementation<Ewald> {
     }
 
     // @todo incomplete; mostly copied from faunus
-    inline void updateBox(EwaldData &data, const vec3 &box_length) const {
+    inline void kvectorUpdate(EwaldData &data, const vec3 &box_length) const {
 
         auto inside_cutoff = [cutoff_squared = data.reciprocal_cutoff * data.reciprocal_cutoff](auto nx, auto ny, auto nz) {
             const auto r = nx * nx + ny * ny + nz * nz;
@@ -1537,7 +1537,7 @@ class Ewald : public EnergyImplementation<Ewald> {
     }
 
     template <class PositionIterator, class ChargeIterator>
-    EwaldData::Tcomplex calcQ(PositionIterator begin, PositionIterator end, ChargeIterator charge_iter,
+    Tcomplex calcQ(PositionIterator begin, PositionIterator end, ChargeIterator charge_iter,
                               const vec3 &k_vector) const {
         double cos_sum = 0.0;
         double sin_sum = 0.0;
@@ -1547,7 +1547,7 @@ class Ewald : public EnergyImplementation<Ewald> {
             sin_sum += (*charge_iter) * std::sin(k_dot_r);
             charge_iter++;
         };
-        return EwaldData::Tcomplex(cos_sum, sin_sum);
+        return Tcomplex(cos_sum, sin_sum);
     }
 
     template <class PositionIterator, class ChargeIterator>
@@ -1597,7 +1597,7 @@ class Ewald : public EnergyImplementation<Ewald> {
         assert(positions.size() == charges.size());
         assert(positions.size() == dipoles.size());
 
-        double volume = box_dimensions[0] * box_dimensions[1] * box_dimensions[2];
+        double volume = box_dimensions.prod();
         std::vector<vec3> reciprocal_vectors;
         std::vector<double> Ak;
         // reciprocal_vectors.reserve( expected_size_of_kvec ); // speeds up push_back below
@@ -1608,11 +1608,10 @@ class Ewald : public EnergyImplementation<Ewald> {
         for (size_t k = 0; k < reciprocal_vectors.size(); k++) {
             const auto Q = calcQ(positions, charges, dipoles, reciprocal_vectors[k]);
             const double kDotR = reciprocal_vectors[k].dot(position);
-            const double coskDotR = std::cos(kDotR);
-            const double sinkDotR = std::sin(kDotR);
-            const auto expKri = std::complex<double>(coskDotR, sinkDotR);
-            const auto qmu = std::complex<double>(-dipole_moment.dot(reciprocal_vectors[k]), charge);
-            const auto repart = expKri * qmu * std::conj(Q);
+            const auto coskDotR = std::cos(kDotR);
+            const auto sinkDotR = std::sin(kDotR);
+            const auto qmu = Tcomplex(-dipole_moment.dot(reciprocal_vectors[k]), charge);
+            const auto repart = Tcomplex(coskDotR, sinkDotR) * qmu * std::conj(Q);
             force += std::real(repart) * reciprocal_vectors[k] * Ak[k];
         }
         return (-force * 4.0 * pi / volume);
@@ -1659,12 +1658,12 @@ class Ewald : public EnergyImplementation<Ewald> {
 
         vec3 field = {0.0, 0.0, 0.0};
         for (size_t k = 0; k < kvec.size(); k++) {
-            std::complex<double> Q = calcQ(positions, charges, dipoles, kvec[k]);
+            Tcomplex Q = calcQ(positions, charges, dipoles, kvec[k]);
             double kDotR = kvec[k].dot(position);
             double coskDotR = std::cos(kDotR);
             double sinkDotR = std::sin(kDotR);
-            std::complex<double> expKrii = std::complex<double>(-sinkDotR, coskDotR);
-            std::complex<double> repart = expKrii * std::conj(Q);
+            Tcomplex expKrii = Tcomplex(-sinkDotR, coskDotR);
+            Tcomplex repart = expKrii * std::conj(Q);
             field += std::real(repart) * kvec[k] * Ak[k];
         }
         return (-field * 4.0 * pi / volume);
@@ -1690,7 +1689,7 @@ class Ewald : public EnergyImplementation<Ewald> {
             double kDotR = k_vector.dot(position);
             double coskDotR = std::cos(kDotR);
             double sinkDotR = std::sin(kDotR);
-            auto expKrii = std::complex<double>(-sinkDotR, coskDotR);
+            auto expKrii = Tcomplex(-sinkDotR, coskDotR);
             auto repart = expKrii * std::conj(Q);
             field += std::real(repart) * k_vector * data.Aks[i];
         }
@@ -1769,19 +1768,14 @@ class Ewald : public EnergyImplementation<Ewald> {
      */
     template <typename Positions, typename Charges, typename Dipoles>
     double surface_energy(Positions &positions, Charges &charges, Dipoles &dipoles, const double volume) const {
-        assert(positions.size() == charges.size());
-        assert(positions.size() == dipoles.size());
         vec3 position_times_charge_sum = {0.0, 0.0, 0.0};
-        for (size_t i = 0; i < positions.size(); i++) {
-            position_times_charge_sum += positions[i] * charges[i];
-        }
-        vec3 dipole_sum = {0.0, 0.0, 0.0};
-        for (size_t i = 0; i < dipoles.size(); i++) {
-            dipole_sum += dipoles[i];
-        }
+        auto charge = charges.begin();
+        std::for_each(positions.begin(), positions.end(), [&](const auto &position) {
+            position_times_charge_sum += position * (*charge++);
+        });
+        vec3 dipole_sum = std::accumulate(dipoles.begin(), dipoles.end(), vec3(0, 0, 0));
         const auto sqDipoles = position_times_charge_sum.dot(position_times_charge_sum) +
                                2.0 * position_times_charge_sum.dot(dipole_sum) + dipole_sum.dot(dipole_sum);
-
         return 2.0 * pi / (2.0 * surface_dielectric_constant + 1.0) / volume * sqDipoles;
     }
 
