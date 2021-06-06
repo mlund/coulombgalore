@@ -522,10 +522,14 @@ auto testField(T &pot, EwaldData &data, std::vector<vec3> &positions, std::vecto
 
 TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     using doctest::Approx;
+    std::vector<double> charges;
+
     SUBCASE("basic") {
         double cutoff = 29.0; // cutoff distance
         double alpha = 0.1;   // damping-parameter
         double eps_sur = infinity;
+        double volume = 2.0;
+        charges = {1.0, -1.0, 2.0, 3.0};
         Ewald pot(cutoff, alpha, eps_sur);
 
         CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.2256758334));
@@ -536,35 +540,34 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
         CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.399713585));
         CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.36159125));
         CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
-
-        std::vector<double> charges = {1.0, -1.0, 2.0, 3.0};
-        double volume = 2.0;
         CHECK(pot.neutralization_energy(charges, volume) == Approx(-1963.341583564));
-
         testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
-
+    }
+    SUBCASE("finite debye length") {
+        double cutoff = 29.0; // cutoff distance
+        double alpha = 0.1;   // damping-parameter
+        double eps_sur = infinity;
         double debye_length = 23.0;
-        Ewald potY(cutoff, alpha, eps_sur, debye_length);
+        double volume = 2.0;
+        charges = {1.0, -1.0, 2.0, 3.0};
+        Ewald pot(cutoff, alpha, eps_sur, debye_length);
 
-        CHECK(potY.self_energy({4.0, 0.0}) == Approx(-0.1493013040));
-        CHECK(potY.self_energy({0.0, 2.0}) == Approx(-0.0006704901976));
-
-        // Test short-ranged function
-        CHECK(potY.short_range_function(0.5) == Approx(0.07306333588));
-        CHECK(potY.short_range_function_derivative(0.5) == Approx(-0.63444119));
-        CHECK(potY.short_range_function_second_derivative(0.5) == Approx(4.423133599));
-        CHECK(potY.short_range_function_third_derivative(0.5) == Approx(-19.85937171));
-
-        CHECK(potY.neutralization_energy(charges, volume) == Approx(-1917.674014375));
+        CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.1493013040));
+        CHECK(pot.self_energy({0.0, 2.0}) == Approx(-0.0006704901976));
+        CHECK(pot.short_range_function(0.5) == Approx(0.07306333588));
+        CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.63444119));
+        CHECK(pot.short_range_function_second_derivative(0.5) == Approx(4.423133599));
+        CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-19.85937171));
+        CHECK(pot.neutralization_energy(charges, volume) == Approx(-1917.674014375));
+        testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
     }
 
-    std::vector<double> charges;
     std::vector<vec3> positions = {{-0.5, 0.0, 0.0}, {0.5, 0.0, 0.0}};
     std::vector<vec3> dipoles = {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};
 
     EwaldData ewald_data;
     ewald_data.box_length = {10, 10, 10};
-    ewald_data.cutoff = ewald_data.box_length[0] / 2.0;
+    ewald_data.cutoff = 0.5 * ewald_data.box_length[0];
     ewald_data.reciprocal_cutoff = 11;
     ewald_data.alpha = 8.0 / ewald_data.box_length[0];
 
@@ -596,7 +599,7 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
             CHECK(force_result.reciprocal[0] == Approx(0.2617988467));
             CHECK(force_result.reciprocal[1] == Approx(0.0));
             CHECK(force_result.reciprocal[2] == Approx(0.0));
-            CHECK(force_result.real[0] + force_result.reciprocal[0] + force_result.surface[0] == Approx(0.9956865));
+            CHECK(force_result.total[0] == Approx(0.9956865));
 
             auto field_result = testField(pot, ewald_data, positions, charges, dipoles);
             CHECK(field_result.real[0] == Approx(0.7338876643));
