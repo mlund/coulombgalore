@@ -509,42 +509,26 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     CHECK(potY.neutralization_energy(charges, volume) == Approx(-1917.674014375));
 
     // Test against DOI: 10.1063/1.481216 and DOI: 10.1063/1.3599045
-    std::vector<vec3> positions;
-    std::vector<vec3> dipoles;
-    positions.resize(2);
-    charges.resize(2);
-    dipoles.resize(2);
-    vec3 zeros = {0.0, 0.0, 0.0};
+    charges = {1.0, -1.0};
+    std::vector<vec3> positions = {{-0.5, 0.0, 0.0}, {0.5, 0.0, 0.0}};
+    std::vector<vec3> dipoles = {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};
 
     double L1 = 10.0;
-    volume = L1*L1*L1;
     vec3 L = {L1, L1, L1};
+    volume = L.prod();
     int nmax = 11;
     cutoff = L1 / 2.0;
     alpha = 8.0 / L1;
-    vec3 rA = {-0.5, 0.0, 0.0};
-    vec3 rB = {0.5, 0.0, 0.0};
-    positions.at(0) = rA;
-    positions.at(1) = rB;
-    vec3 rAB = rA - rB;
-
-    // -- two charges
-    double qA = 1.0;
-    double qB = -1.0;
-    vec3 muA = {0.0, 0.0, 0.0};
-    vec3 muB = {0.0, 0.0, 0.0};
-    charges.at(0) = qA;
-    charges.at(1) = qB;
-    dipoles.at(0) = muA;
-    dipoles.at(1) = muB;
+    vec3 rAB = positions[0] - positions[1];
+    const auto &rA = positions[0];
 
     // ---- infinite diel. coeff. of surrounding
     eps_sur = infinity;
     Ewald pot_reci_inf(cutoff, alpha, eps_sur);
 
     
-    double real_energy = pot_reci_inf.ion_ion_energy(qA, qB, rAB.norm());
-    double self_energy = pot_reci_inf.self_energy({qA*qA + qB*qB, 0.0});
+    double real_energy = pot_reci_inf.ion_ion_energy(charges[0], charges[1], rAB.norm());
+    double self_energy = pot_reci_inf.self_energy({charges[0]*charges[0] + charges[1]*charges[1], 0.0});
     double surface_energy = pot_reci_inf.surface_energy(positions, charges, dipoles, volume);
     double reciprocal_energy = pot_reci_inf.reciprocal_energy(positions,charges,dipoles,L,nmax);
     CHECK(real_energy == Approx(-0.2578990353));
@@ -565,24 +549,24 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
         CHECK(reciprocal_energy == Approx(0.1584768302));
     }
 
-    vec3 real_force = pot_reci_inf.ion_ion_force(qA, qB, rAB);
+    vec3 real_force = pot_reci_inf.ion_ion_force(charges[0], charges[1], rAB);
     CHECK(real_force[0] == Approx(0.7338876643));
     CHECK(real_force[1] == Approx(0.0));
     CHECK(real_force[2] == Approx(0.0));
 
-    vec3 surface_force = pot_reci_inf.surface_force(positions, charges, dipoles, volume, qA);
+    vec3 surface_force = pot_reci_inf.surface_force(positions, charges, dipoles, volume, charges[0]);
     CHECK(surface_force[0] == Approx(0.0));
     CHECK(surface_force[1] == Approx(0.0));
     CHECK(surface_force[2] == Approx(0.0));
 
-    vec3 reciprocal_force = pot_reci_inf.reciprocal_force(positions, charges, dipoles, L, nmax, rA, qA, muA);
+    vec3 reciprocal_force = pot_reci_inf.reciprocal_force(positions, charges, dipoles, L, nmax, positions[0], charges[0], dipoles[0]);
     CHECK(reciprocal_force[0] == Approx(0.2617988467));
     CHECK(reciprocal_force[1] == Approx(0.0));
     CHECK(reciprocal_force[2] == Approx(0.0));
 
     CHECK(real_force[0]+reciprocal_force[0]+surface_force[0] == Approx(0.9956865));
 
-    vec3 real_field = pot_reci_inf.ion_field(qB, rAB);
+    vec3 real_field = pot_reci_inf.ion_field(charges[1], rAB);
     CHECK(real_field[0] == Approx(0.7338876643));
     CHECK(real_field[1] == Approx(0.0));
     CHECK(real_field[2] == Approx(0.0));
@@ -599,7 +583,7 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
         CHECK(reciprocal_field[2] == Approx(0.0));
     }
 
-    vec3 self_field = pot_reci_inf.self_field({zeros, dipoles.at(1)});
+    vec3 self_field = pot_reci_inf.self_field({vec3::Zero(), dipoles.at(1)});
     CHECK(self_field[0] == Approx(0.0));
     CHECK(self_field[1] == Approx(0.0));
     CHECK(self_field[2] == Approx(0.0));
@@ -627,19 +611,13 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     CHECK(real_field[0]+reciprocal_field[0]+self_field[0]+surface_field[0] == Approx(0.9998753));
 
     // -- two dipoles
-    qA = 0.0;
-    qB = 0.0;
-    muA = {1.0, 0.0, 0.0};
-    muB = {1.0, 0.0, 0.0};
-    charges.at(0) = qA;
-    charges.at(1) = qB;
-    dipoles.at(0) = muA;
-    dipoles.at(1) = muB;
+    charges = {0.0, 0.0};
+    dipoles = {{1.0, 0.0, 0.0}, {1.0, 0.0, 0.0}};
 
     // ---- infinite diel. coeff. of surrounding
 
-    real_energy = pot_reci_inf.dipole_dipole_energy(muA, muB, rAB);
-    self_energy = pot_reci_inf.self_energy({qA*qA + qB*qB, muA.dot(muA) + muB.dot(muB)});
+    real_energy = pot_reci_inf.dipole_dipole_energy(dipoles[0], dipoles[1], rAB);
+    self_energy = pot_reci_inf.self_energy({charges[0]*charges[0] + charges[1]*charges[0], dipoles[0].dot(dipoles[0]) + dipoles[1].dot(dipoles[1])});
     surface_energy = pot_reci_inf.surface_energy(positions, charges, dipoles, volume);
     reciprocal_energy = pot_reci_inf.reciprocal_energy(positions,charges,dipoles,L,nmax);
     CHECK(real_energy == Approx(-2.0770407737));
@@ -648,7 +626,7 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     CHECK(reciprocal_energy == Approx(0.4534417045));
     CHECK(real_energy+self_energy+surface_energy+reciprocal_energy == Approx(-2.0087525));
 
-    real_field = pot_reci_inf.dipole_field(muB, rAB);
+    real_field = pot_reci_inf.dipole_field(dipoles[1], rAB);
     CHECK(real_field[0] == Approx(2.0770407737 ));
     CHECK(real_field[1] == Approx(0.0));
     CHECK(real_field[2] == Approx(0.0));
@@ -658,7 +636,7 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     CHECK(reciprocal_field[1] == Approx(0.0));
     CHECK(reciprocal_field[2] == Approx(0.0));
 
-    self_field = pot_reci_inf.self_field({zeros, muB});
+    self_field = pot_reci_inf.self_field({vec3::Zero(), dipoles[1]});
     CHECK(self_field[0] == Approx(0.3851534224));
     CHECK(self_field[1] == Approx(0.0));
     CHECK(self_field[2] == Approx(0.0));
