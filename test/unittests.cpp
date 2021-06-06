@@ -472,6 +472,21 @@ TEST_CASE("[CoulombGalore] Fanourgakis") {
     CHECK(Poisson(cutoff, 4, 3).short_range_function(0.5) == Approx(pot.short_range_function(0.5)));
 }
 
+template <class T> struct EwaldResult { T real, reciprocal, surface, self; };
+
+template <typename T>
+EwaldResult<double> testEnergy(T &pot, EwaldData &data, std::vector<vec3> &positions, std::vector<double> &charges,
+                               std::vector<vec3> &dipoles) {
+    EwaldResult<double> result;
+    vec3 rAB = positions[0] - positions[1];
+    result.real = pot.ion_ion_energy(charges[0], charges[1], rAB.norm());
+    result.self = pot.self_energy({charges[0] * charges[0] + charges[1] * charges[1], 0.0});
+    result.surface = pot.surface_energy(positions, charges, dipoles, data.box_length.prod());
+    result.reciprocal = pot.reciprocal_energy(positions, charges, dipoles, data.box_length, data.reciprocal_cutoff);
+    //result.reciprocal = pot.reciprocal_energy(data, positions, charges, dipoles);
+    return result;
+}
+
 TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     using doctest::Approx;
     double cutoff = 29.0; // cutoff distance
@@ -522,30 +537,32 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     vec3 rAB = positions[0] - positions[1];
     const auto &rA = positions[0];
 
+    EwaldResult<double> energy_result;
+
     // ---- infinite diel. coeff. of surrounding
     eps_sur = infinity;
     Ewald pot_reci_inf(cutoff, alpha, eps_sur);
 
-    
-    double real_energy = pot_reci_inf.ion_ion_energy(charges[0], charges[1], rAB.norm());
-    double self_energy = pot_reci_inf.self_energy({charges[0]*charges[0] + charges[1]*charges[1], 0.0});
-    double surface_energy = pot_reci_inf.surface_energy(positions, charges, dipoles, volume);
-    double reciprocal_energy = pot_reci_inf.reciprocal_energy(positions,charges,dipoles,L,nmax);
-    CHECK(real_energy == Approx(-0.2578990353));
-    CHECK(self_energy == Approx(-0.9027033337));
-    CHECK(surface_energy == Approx(0.0));
-    CHECK(reciprocal_energy == Approx(0.1584768302));
-    CHECK(real_energy+self_energy+surface_energy+reciprocal_energy == Approx(-1.0021255));
+    EwaldData ewald_data;
+    ewald_data.reciprocal_cutoff = nmax;
+    ewald_data.box_length = L;
+    ewald_data.surface_dielectric_constant = eps_sur;
+    ewald_data.cutoff = cutoff;
+    ewald_data.reciprocal_cutoff = nmax;
+    ewald_data.alpha = alpha;
 
-    EwaldData data;
-    data.surface_dielectric_constant = eps_sur;
-    data.cutoff = cutoff;
-    data.reciprocal_cutoff = nmax;
-    data.alpha = alpha;
-    pot_reci_inf.kvectorUpdate(data, L);
+    pot_reci_inf.kvectorUpdate(ewald_data, L);
 
-    SUBCASE("EwaldData energy") {
-        double reciprocal_energy = pot_reci_inf.reciprocal_energy(data, positions, charges, dipoles);
+    SUBCASE("energy") {
+        energy_result = testEnergy(pot_reci_inf, ewald_data, positions, charges, dipoles);
+        CHECK(energy_result.real == Approx(-0.2578990353));
+        CHECK(energy_result.self == Approx(-0.9027033337));
+        CHECK(energy_result.surface == Approx(0.0));
+        CHECK(energy_result.reciprocal == Approx(0.1584768302));
+        CHECK(energy_result.real + energy_result.self + energy_result.surface + energy_result.reciprocal ==
+              Approx(-1.0021255));
+
+        double reciprocal_energy = pot_reci_inf.reciprocal_energy(ewald_data, positions, charges, dipoles);
         CHECK(reciprocal_energy == Approx(0.1584768302));
     }
 
@@ -577,7 +594,7 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     CHECK(reciprocal_field[2] == Approx(0.0));
 
     SUBCASE("EwaldData field") {
-        auto reciprocal_field = pot_reci_inf.reciprocal_field(data, positions, charges, dipoles, rA);
+        auto reciprocal_field = pot_reci_inf.reciprocal_field(ewald_data, positions, charges, dipoles, rA);
         CHECK(reciprocal_field[0] == Approx(0.2617988467));
         CHECK(reciprocal_field[1] == Approx(0.0));
         CHECK(reciprocal_field[2] == Approx(0.0));
@@ -597,11 +614,13 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
 
     // ---- unit diel. coeff. of surrounding
     eps_sur = 1.0;
+    ewald_data.surface_dielectric_constant = eps_sur;
     Ewald pot_reci_unit(cutoff, alpha, eps_sur);
 
-    surface_energy = pot_reci_unit.surface_energy(positions, charges, dipoles, volume);
-    CHECK(surface_energy == Approx(0.0020943951));
-    CHECK(real_energy+self_energy+surface_energy+reciprocal_energy == Approx(-1.0000311));
+    energy_result = testEnergy(pot_reci_unit, ewald_data, positions, charges, dipoles);
+    CHECK(energy_result.surface == Approx(0.0020943951));
+    CHECK(energy_result.real + energy_result.self + energy_result.surface + energy_result.reciprocal ==
+          Approx(-1.0000311));
 
     surface_field = pot_reci_unit.surface_field(positions, charges, dipoles, volume);
     CHECK(surface_field[0] == Approx(0.0041887902));
@@ -616,15 +635,15 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
 
     // ---- infinite diel. coeff. of surrounding
 
-    real_energy = pot_reci_inf.dipole_dipole_energy(dipoles[0], dipoles[1], rAB);
-    self_energy = pot_reci_inf.self_energy({charges[0]*charges[0] + charges[1]*charges[0], dipoles[0].dot(dipoles[0]) + dipoles[1].dot(dipoles[1])});
-    surface_energy = pot_reci_inf.surface_energy(positions, charges, dipoles, volume);
-    reciprocal_energy = pot_reci_inf.reciprocal_energy(positions,charges,dipoles,L,nmax);
-    CHECK(real_energy == Approx(-2.0770407737));
-    CHECK(self_energy == Approx(-0.3851534224));
-    CHECK(surface_energy == Approx(0.0));
-    CHECK(reciprocal_energy == Approx(0.4534417045));
-    CHECK(real_energy+self_energy+surface_energy+reciprocal_energy == Approx(-2.0087525));
+    energy_result.real = pot_reci_inf.dipole_dipole_energy(dipoles[0], dipoles[1], rAB);
+    energy_result.self = pot_reci_inf.self_energy({charges[0]*charges[0] + charges[1]*charges[0], dipoles[0].dot(dipoles[0]) + dipoles[1].dot(dipoles[1])});
+    energy_result.surface = pot_reci_inf.surface_energy(positions, charges, dipoles, volume);
+    energy_result.reciprocal = pot_reci_inf.reciprocal_energy(positions,charges,dipoles,L,nmax);
+    CHECK(energy_result.real == Approx(-2.0770407737));
+    CHECK(energy_result.self == Approx(-0.3851534224));
+    CHECK(energy_result.surface == Approx(0.0));
+    CHECK(energy_result.reciprocal == Approx(0.4534417045));
+    CHECK(energy_result.real+energy_result.self+energy_result.surface+energy_result.reciprocal == Approx(-2.0087525));
 
     real_field = pot_reci_inf.dipole_field(dipoles[1], rAB);
     CHECK(real_field[0] == Approx(2.0770407737 ));
@@ -650,9 +669,9 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
 
     // ---- unit diel. coeff. of surrounding
 
-    surface_energy = pot_reci_unit.surface_energy(positions, charges, dipoles, volume);
-    CHECK(surface_energy == Approx(0.0083775804));
-    CHECK(real_energy+self_energy+surface_energy+reciprocal_energy == Approx(-2.0003749));
+    energy_result.surface = pot_reci_unit.surface_energy(positions, charges, dipoles, volume);
+    CHECK(energy_result.surface == Approx(0.0083775804));
+    CHECK(energy_result.real+energy_result.self+energy_result.surface+energy_result.reciprocal == Approx(-2.0003749));
 
     surface_field = pot_reci_unit.surface_field(positions, charges, dipoles, volume);
     CHECK(surface_field[0] == Approx(-0.0083775804));
