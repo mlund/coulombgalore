@@ -474,11 +474,11 @@ TEST_CASE("[CoulombGalore] Fanourgakis") {
     CHECK(Poisson(cutoff, 4, 3).short_range_function(0.5) == Approx(pot.short_range_function(0.5)));
 }
 
-template <class T> struct EwaldResult { T real, reciprocal, surface, self; };
+template <class T> struct EwaldResult { T real, reciprocal, surface, self, total; };
 
 template <typename T>
-EwaldResult<double> testEnergy(T &pot, EwaldData &data, std::vector<vec3> &positions, std::vector<double> &charges,
-                               std::vector<vec3> &dipoles) {
+auto testEnergy(T &pot, EwaldData &data, std::vector<vec3> &positions, std::vector<double> &charges,
+                std::vector<vec3> &dipoles) {
     EwaldResult<double> result;
     vec3 rAB = positions[0] - positions[1];
     result.real = pot.ion_ion_energy(charges[0], charges[1], rAB.norm());
@@ -486,8 +486,23 @@ EwaldResult<double> testEnergy(T &pot, EwaldData &data, std::vector<vec3> &posit
     result.surface = pot.surface_energy(positions, charges, dipoles, data.box_length.prod());
     result.reciprocal = pot.reciprocal_energy(positions, charges, dipoles, data.box_length, data.reciprocal_cutoff);
     // result.reciprocal = pot.reciprocal_energy(data, positions, charges, dipoles);
+    result.total = result.real + result.self + result.surface + result.reciprocal;
     return result;
 }
+
+template <typename T>
+auto testForce(T &pot, EwaldData &data, std::vector<vec3> &positions, std::vector<double> &charges,
+                               std::vector<vec3> &dipoles) {
+    EwaldResult<vec3> result;
+    vec3 rAB = positions[0] - positions[1];
+    result.real = pot.ion_ion_force(charges[0], charges[1], rAB.norm());
+    result.self = pot.self_force({charges[0] * charges[0] + charges[1] * charges[1], 0.0});
+    result.surface = pot.surface_force(positions, charges, dipoles, data.box_length.prod());
+    result.reciprocal = pot.reciprocal_force(positions, charges, dipoles, data.box_length, data.reciprocal_cutoff);
+    result.total = result.real + result.self + result.surface + result.reciprocal;
+    return result;
+}
+
 
 TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     using doctest::Approx;
@@ -540,6 +555,7 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     const auto &rA = positions[0];
 
     EwaldResult<double> energy_result;
+    EwaldResult<vec3> force_result, field_result;
 
     // ---- infinite diel. coeff. of surrounding
     eps_sur = infinity;
@@ -561,9 +577,7 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
         CHECK(energy_result.self == Approx(-0.9027033337));
         CHECK(energy_result.surface == Approx(0.0));
         CHECK(energy_result.reciprocal == Approx(0.1584768302));
-        CHECK(energy_result.real + energy_result.self + energy_result.surface + energy_result.reciprocal ==
-              Approx(-1.0021255));
-
+        CHECK(energy_result.total == Approx(-1.0021255));
         double reciprocal_energy = pot_reci_inf.reciprocal_energy(ewald_data, positions, charges, dipoles);
         CHECK(reciprocal_energy == Approx(0.1584768302));
     }
