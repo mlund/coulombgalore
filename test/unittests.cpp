@@ -485,7 +485,7 @@ auto testEnergy(T &pot, std::vector<vec3> &positions, std::vector<double> &charg
     result.self = pot.real_space.self_energy(
         {charges[0] * charges[0] + charges[1] * charges[1], dipoles[0].dot(dipoles[0]) + dipoles[1].dot(dipoles[1])});
     result.surface = pot.surface_energy(positions, charges, dipoles);
-    result.reciprocal = pot.reciprocal_energy(positions, charges, dipoles);
+    result.reciprocal = pot.reciprocal_energy();
     // result.reciprocal = pot.reciprocal_energy(data, positions, charges, dipoles);
     result.total = result.real + result.self + result.surface + result.reciprocal;
     return result;
@@ -497,7 +497,7 @@ auto testForce(T &pot, std::vector<vec3> &positions, std::vector<double> &charge
     vec3 rAB = positions[0] - positions[1];
     result.real = pot.real_space.ion_ion_force(charges[0], charges[1], rAB);
     result.surface = pot.surface_force(positions, charges, dipoles, charges[0]);
-    result.reciprocal = pot.reciprocal_force(positions, charges, dipoles, positions[0], charges[0], dipoles[0]);
+    result.reciprocal = pot.reciprocal_force(positions[0], charges[0], dipoles[0]);
     result.total = result.real + result.surface + result.reciprocal;
     return result;
 }
@@ -507,7 +507,7 @@ auto testField(T &pot, std::vector<vec3> &positions, std::vector<double> &charge
     EwaldResult<vec3> result;
     vec3 rAB = positions[0] - positions[1];
     result.real = pot.real_space.ion_field(charges[1], rAB) + pot.real_space.dipole_field(dipoles[1], rAB);
-    result.reciprocal = pot.reciprocal_field(positions, charges, dipoles, positions[0]);
+    result.reciprocal = pot.reciprocal_field(positions[0]);
     result.self = pot.real_space.self_field({vec3::Zero(), dipoles.at(1)});
     result.surface = pot.surface_field(positions, charges, dipoles);
     result.total = result.real + result.self + result.surface + result.reciprocal;
@@ -572,6 +572,7 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
         SUBCASE("infinite dielectric") {
             ewald_data.surface_dielectric_constant = infinity;
             ReciprocalEwaldGaussian pot(ewald_data);
+            pot.updateComplex(positions, charges, dipoles, std::plus<>());
 
             auto energy_result = testEnergy(pot, positions, charges, dipoles);
             CHECK(energy_result.real == Approx(-0.2578990353));
@@ -579,8 +580,6 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
             CHECK(energy_result.surface == Approx(0.0));
             CHECK(energy_result.reciprocal == Approx(0.1584768302));
             CHECK(energy_result.total == Approx(-1.0021255));
-            auto reciprocal_energy = pot.reciprocal_energy(positions, charges, dipoles);
-            CHECK(reciprocal_energy == Approx(0.1584768302));
 
             auto force_result = testForce(pot, positions, charges, dipoles);
             CHECK(force_result.real[0] == Approx(0.7338876643));
@@ -609,7 +608,7 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
             CHECK(field_result.surface[2] == Approx(0.0));
             CHECK(field_result.total[0] == Approx(0.9956865));
             SUBCASE("ReciprocalEwaldState field") {
-                auto reciprocal_field = pot.reciprocal_field(positions, charges, dipoles, positions[0]);
+                auto reciprocal_field = pot.reciprocal_field(positions[0]);
                 CHECK(reciprocal_field[0] == Approx(0.2617988467));
                 CHECK(reciprocal_field[1] == Approx(0.0));
                 CHECK(reciprocal_field[2] == Approx(0.0));
@@ -619,6 +618,7 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
         SUBCASE("unity dielectric") {
             ewald_data.surface_dielectric_constant = 1.0;
             ReciprocalEwaldGaussian pot(ewald_data);
+            pot.updateComplex(positions, charges, dipoles, std::plus<>());
             auto energy_result = testEnergy(pot, positions, charges, dipoles);
             auto field_result = testField(pot, positions, charges, dipoles);
 
@@ -639,6 +639,8 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
         SUBCASE("infinite surface dielectric") {
             ewald_data.surface_dielectric_constant = infinity;
             ReciprocalEwaldGaussian pot(ewald_data);
+            pot.updateComplex(positions, charges, dipoles, std::plus<>());
+
             auto energy_result = testEnergy(pot, positions, charges, dipoles);
             auto field_result = testField(pot, positions, charges, dipoles);
 
@@ -665,6 +667,8 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
         SUBCASE("unity surface dielectric") {
             ewald_data.surface_dielectric_constant = 1.0;
             ReciprocalEwaldGaussian pot(ewald_data);
+            pot.updateComplex(positions, charges, dipoles, std::plus<>());
+
             auto energy_result = testEnergy(pot, positions, charges, dipoles);
             auto field_result = testField(pot, positions, charges, dipoles);
 

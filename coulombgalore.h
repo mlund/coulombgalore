@@ -1472,6 +1472,7 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
     explicit ReciprocalEwaldGaussian(const ReciprocalEwaldState &state)
         : ReciprocalEwaldState(state), real_space(state) {
         generateKVectors(state.box_length);
+        Q_mp.setZero();
     }
 
     void setAks() {
@@ -1543,7 +1544,7 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
      */
     template <class Positions, class Charges, class Dipoles, class BinaryOp>
     void updateComplex(Positions &positions, Charges &charges, Dipoles &dipoles,
-                       BinaryOp binary_op = std::plus<>()) const {
+                       BinaryOp binary_op = std::plus<>()) {
         for (int i = 0; i < k_vectors.cols(); i++) {
             Q_mp[i] = binary_op(Q_mp[i], calcQ(k_vectors.col(i), positions, charges, dipoles));
         }
@@ -1561,15 +1562,11 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
 
     /**
      * @brief Reciprocal-space energy
-     * @param positions Positions of particles
-     * @param charges Charges of particles
-     * @param dipoles Dipole moments of particles
      */
-    template <typename Positions, typename Charges, typename Dipoles>
-    auto reciprocal_energy(Positions &positions, Charges &charges, Dipoles &dipoles) {
+    inline auto reciprocal_energy() {
         double sum = 0.0;
         for (int i = 0; i < k_vectors.cols(); i++) {
-            const auto absQ = std::abs(calcQ(k_vectors.col(i), positions, charges, dipoles));
+            const auto absQ = std::abs(Q_mp[i]);
             sum += absQ * absQ * Aks[i];
         }
         return 2.0 * pi / getVolume() * sum;
@@ -1577,22 +1574,16 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
 
     /**
      * @brief Reciprocal-space force
-     * @param positions Positions of particles
-     * @param charges Charges of particles
-     * @param dipoles Dipole moments of particles
      * @param position Position of particle
      * @param charge Charge of particle
      * @param dipole_moment Dipole moment of particle
      */
-    template <typename Positions, typename Charges, typename Dipoles>
-    vec3 reciprocal_force(Positions &positions, Charges &charges, Dipoles &dipoles, const vec3 &position,
-                          const double charge, const vec3 &dipole_moment) {
+    inline vec3 reciprocal_force(const vec3 &position, const double charge, const vec3 &dipole_moment) {
         vec3 sum = {0.0, 0.0, 0.0};
         for (int i = 0; i < k_vectors.cols(); i++) {
-            const auto Q = calcQ(k_vectors.col(i), positions, charges, dipoles);
             const double kr = k_vectors.col(i).dot(position); // 𝒌⋅𝒓
             const auto qmu = Tcomplex(-dipole_moment.dot(k_vectors.col(i)), charge);
-            const auto repart = Tcomplex(std::cos(kr), std::sin(kr)) * qmu * std::conj(Q);
+            const auto repart = Tcomplex(std::cos(kr), std::sin(kr)) * qmu * std::conj(Q_mp[i]);
             sum += std::real(repart) * k_vectors.col(i) * Aks[i];
         }
         return -4.0 * pi / getVolume() * sum;
@@ -1613,18 +1604,13 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
 
     /**
      * @brief Reciprocal-space field
-     * @param positions Positions of particles
-     * @param charges Charges of particles
-     * @param dipoles Dipole moments of particles
      * @param position Evaluation position
      */
-    template <typename Positions, typename Charges, typename Dipoles>
-    vec3 reciprocal_field(Positions &positions, Charges &charges, Dipoles &dipoles, const vec3 &position) {
+    vec3 reciprocal_field(const vec3 &position) {
         vec3 field = {0.0, 0.0, 0.0};
         for (int i = 0; i < k_vectors.cols(); i++) {
-            const auto Q = calcQ(k_vectors.col(i), positions, charges, dipoles);
             const double kr = k_vectors.col(i).dot(position); // 𝒌⋅𝒓
-            const auto repart = Tcomplex(-std::sin(kr), std::cos(kr)) * std::conj(Q);
+            const auto repart = Tcomplex(-std::sin(kr), std::cos(kr)) * std::conj(Q_mp[i]);
             field += std::real(repart) * k_vectors.col(i) * Aks[i];
         }
         return -4.0 * pi / getVolume() * field;
