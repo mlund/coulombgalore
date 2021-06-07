@@ -1271,7 +1271,7 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
      * @note DOI:10.1021/jp951011v
      */
     inline double neutralization_energy(const std::vector<double> &charges, double volume) const override {
-        auto charge_sum = std::accumulate(charges.begin(), charges.end(), 0.0);
+        const auto charge_sum = std::accumulate(charges.begin(), charges.end(), 0.0);
         return ((this)->chi / 2.0 / volume * charge_sum * charge_sum);
     }
 };
@@ -1334,25 +1334,30 @@ class ReciprocalEwaldState {
     double surface_dielectric_constant = 0.0; //!< Surface dielectric constant;
     double kappa = 0.0;                       //!< Inverse Debye screening length
     double alpha = 0.0;
-    double debye_length = infinity;
-    // double const_inf = 0.0;
-    // double check_k2_zero = 0.0;
-    // bool use_spherical_sum = true;
     vec3 box_length = {0.0, 0.0, 0.0};                         //!< Box dimensions
     enum Policies { PBC, PBCEigen, IPBC, IPBCEigen, INVALID }; //!< Possible k-space updating schemes
     Policies policy = PBC;                                     //!< Policy for updating k-space
+
     inline int numKVectors() const { return k_vectors.cols(); }
+
     inline auto getVolume() const { return box_length.prod(); }
+
+    void resize(int number_of_k_vectors) {
+        k_vectors.conservativeResize(3, number_of_k_vectors);
+        Q_ion.resize(number_of_k_vectors);
+        Q_dipole.resize(number_of_k_vectors);
+        Aks.conservativeResize(number_of_k_vectors);
+    }
 };
 
 #ifdef NLOHMANN_JSON_HPP
 NLOHMANN_JSON_SERIALIZE_ENUM(ReciprocalEwaldState::Policies, {
-    {ReciprocalEwaldState::INVALID, nullptr},
-    {ReciprocalEwaldState::PBC, "PBC"},
-    {ReciprocalEwaldState::PBCEigen, "PBCEigen"},
-    {ReciprocalEwaldState::IPBC, "IPBC"},
-    {ReciprocalEwaldState::IPBCEigen, "IPBCEigen"},
-})
+                                                                 {ReciprocalEwaldState::INVALID, nullptr},
+                                                                 {ReciprocalEwaldState::PBC, "PBC"},
+                                                                 {ReciprocalEwaldState::PBCEigen, "PBCEigen"},
+                                                                 {ReciprocalEwaldState::IPBC, "IPBC"},
+                                                                 {ReciprocalEwaldState::IPBCEigen, "IPBCEigen"},
+                                                             })
 #endif
 
 /**
@@ -1392,7 +1397,7 @@ class Ewald : public EnergyImplementation<Ewald> {
         }
 
         // Eq. 12 in DOI: 10.1016/0009-2614(83)80585-5 using 'K = cutoff region'
-        double Q = 1.0 - std::erfc(eta) - 2.0 * eta / pi_sqrt * std::exp(-eta2);
+        const auto Q = 1.0 - std::erfc(eta) - 2.0 * eta / pi_sqrt * std::exp(-eta2);
         if (std::isinf(surface_dielectric_constant)) {
             T0 = Q;
         } else { // Eq. 17 in DOI: 10.1016/0009-2614(83)80585-5
@@ -1472,6 +1477,15 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
         generateKVectors(state.box_length);
     }
 
+    void setAks() {
+        const auto cutoff_squared = cutoff * cutoff;
+        const auto reduced_damping_squared = std::pow(alpha * cutoff, 2);
+        const auto reduced_kappa_squared = std::pow(kappa * cutoff, 2);
+        for (int i = 0; i < Aks.size(); i++) {
+            const double k2 = k_vectors.col(i).squaredNorm() + kappa * kappa;
+            Aks[i] = std::exp(-(k2 * cutoff_squared + reduced_kappa_squared) / (4.0 * reduced_damping_squared)) / k2;
+        }
+    }
     // @todo incomplete; mostly copied from faunus
     inline void generateKVectors(const vec3 &box_length) {
         auto inside_cutoff = [cutoff_squared = reciprocal_cutoff * reciprocal_cutoff](auto nx, auto ny, auto nz) {
@@ -1480,45 +1494,29 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
         }; // lambda to determine if wave-vector is within spherical cut-off
 
         this->box_length = box_length;
-        // data.check_k2_zero = 0.1 * std::pow(2 * pi / data.box_length.maxCoeff(), 2);
-        int num_kvectors = std::pow(2 * reciprocal_cutoff + 1, 3) - 1;
-        if (num_kvectors == 0) {
-            k_vectors.resize(3, 1);
+        int number_of_k_vectors = std::pow(2 * reciprocal_cutoff + 1, 3) - 1;
+        if (number_of_k_vectors == 0) {
+            resize(1);
             k_vectors.col(0) = vec3(1.0, 0.0, 0.0); // Just so it is not the zero-vector
-            Aks.resize(1);
             Aks[0] = 0;
-            num_kvectors = 1;
-            Q_ion.resize(1);
-            Q_dipole.resize(1);
         } else {
-            k_vectors.resize(3, num_kvectors);
+            resize(number_of_k_vectors);
             k_vectors.setZero();
-            Aks.resize(num_kvectors);
             Aks.setZero();
-            num_kvectors = 0;
+            number_of_k_vectors = 0;
             const vec3 two_pi_inverse_box_length = 2.0 * pi * box_length.cwiseInverse();
             for (int nx = -reciprocal_cutoff; nx < reciprocal_cutoff + 1; nx++) {
                 for (int ny = -reciprocal_cutoff; ny < reciprocal_cutoff + 1; ny++) {
                     for (int nz = -reciprocal_cutoff; nz < reciprocal_cutoff + 1; nz++) {
                         if (inside_cutoff(nx, ny, nz)) {
-                            k_vectors.col(num_kvectors++) = two_pi_inverse_box_length.cwiseProduct(vec3(nx, ny, nz));
+                            k_vectors.col(number_of_k_vectors++) =
+                                two_pi_inverse_box_length.cwiseProduct(vec3(nx, ny, nz));
                         }
                     }
                 }
             }
-            Q_ion.resize(num_kvectors);
-            Q_dipole.resize(num_kvectors);
-            Aks.conservativeResize(num_kvectors);          // shrink if needed
-            k_vectors.conservativeResize(3, num_kvectors); // shrink if needed
-
-            const auto reduced_damping_squared = std::pow(alpha * cutoff, 2);
-            const auto reduced_kappa_squared = std::pow(cutoff / debye_length, 2);
-            const auto cutoff_squared = cutoff * cutoff;
-            for (int i = 0; i < Aks.size(); i++) {
-                const auto k2 = k_vectors.col(i).squaredNorm() + reduced_kappa_squared / cutoff_squared;
-                Aks[i] =
-                    std::exp(-(k2 * cutoff_squared + reduced_kappa_squared) / (4.0 * reduced_damping_squared)) / k2;
-            }
+            resize(number_of_k_vectors); // shrink if needed due to cutoff
+            setAks();
         }
     }
 
@@ -1527,20 +1525,20 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
      * @param positions Positions of particles
      * @param charges Charges of particles
      * @param dipoles Dipole moments of particles
-     * @param kvec Single k-vector
+     * @param k Single k-vector
      * @todo May be optimized to splitting into several loops, enabling SIMD optimization
      */
     template <typename Positions, typename Charges, typename Dipoles>
     std::pair<Tcomplex, Tcomplex> calcQ(Positions &positions, Charges &charges, Dipoles &dipoles,
-                                        const vec3 &kvec) const {
+                                        const vec3 &k) const {
         Tcomplex Qq(0.0, 0.0);
         Tcomplex Qmu(0.0, 0.0);
         for (size_t i = 0; i < positions.size(); i++) {
-            const double kr = kvec.dot(positions[i]);
+            const double kr = k.dot(positions[i]);
             const auto cos_kr = std::cos(kr);
             const auto sin_kr = std::sin(kr);
             Qq += charges[i] * Tcomplex(cos_kr, sin_kr);
-            Qmu += dipoles[i].dot(kvec) * Tcomplex(-sin_kr, cos_kr);
+            Qmu += dipoles[i].dot(k) * Tcomplex(-sin_kr, cos_kr);
         }
         return {Qq, Qmu};
     }
