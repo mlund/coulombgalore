@@ -1338,11 +1338,31 @@ class ReciprocalEwaldState {
 
     inline int numKVectors() const { return k_vectors.cols(); }
     inline auto getVolume() const { return box_length.prod(); }
+    inline void setZeroComplex() { Q_mp.setZero(); }
 
+    /**
+     * @brief Resize k-vectors, Q, and Aks. Present values are conserved.
+     * @param number_of_k_vectors Number of k-vectors
+     * @todo Is the special case if zero really needed?
+     */
     void resize(int number_of_k_vectors) {
-        k_vectors.conservativeResize(3, number_of_k_vectors);
-        Q_mp.resize(number_of_k_vectors);
-        Aks.conservativeResize(number_of_k_vectors);
+        if (number_of_k_vectors == 0) {
+            resize(1);
+            k_vectors.col(0) = vec3(1.0, 0.0, 0.0); // Just so it is not the zero-vector
+            Aks.setZero();
+        } else {
+            k_vectors.conservativeResize(3, number_of_k_vectors);
+            Q_mp.conservativeResize(number_of_k_vectors);
+            Aks.conservativeResize(number_of_k_vectors);
+        }
+    }
+    template <typename Positions, typename Charges, typename Dipoles>
+    vec3 dipoleMoment(const Positions &positions, const Charges &charges, const Dipoles &dipoles) const {
+        vec3 dipole = {0.0, 0.0, 0.0};
+        for (int i = 0; i < (int)positions.size(); i++) {
+            dipole += positions[i] * charges[i] + dipoles[i];
+        }
+        return dipole;
     }
 };
 
@@ -1465,15 +1485,7 @@ class Ewald : public EnergyImplementation<Ewald> {
 };
 
 class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
-  public:
-    Ewald real_space; //!< Real-space energy functions
-
-    explicit ReciprocalEwaldGaussian(const ReciprocalEwaldState &state)
-        : ReciprocalEwaldState(state), real_space(state) {
-        generateKVectors(state.box_length);
-        Q_mp.setZero();
-    }
-
+  private:
     void setAks() {
         const auto cutoff_squared = cutoff * cutoff;
         const auto reduced_damping_squared = alpha * alpha * cutoff_squared;
@@ -1481,37 +1493,6 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
         for (int i = 0; i < Aks.size(); i++) {
             const double k2 = k_vectors.col(i).squaredNorm() + kappa * kappa;
             Aks[i] = std::exp(-(k2 * cutoff_squared + reduced_kappa_squared) / (4.0 * reduced_damping_squared)) / k2;
-        }
-    }
-    // @todo incomplete; mostly copied from faunus
-    inline void generateKVectors(const vec3 &box_length) {
-        auto inside_cutoff = [cutoff_squared = reciprocal_cutoff * reciprocal_cutoff](auto nx, auto ny, auto nz) {
-            const auto r = nx * nx + ny * ny + nz * nz;
-            return (r > 0 && r <= cutoff_squared);
-        }; // lambda to determine if wave-vector is within spherical cut-off
-
-        this->box_length = box_length;
-        int number_of_k_vectors = std::pow(2 * reciprocal_cutoff + 1, 3) - 1;
-        if (number_of_k_vectors == 0) {
-            resize(1);
-            k_vectors.col(0) = vec3(1.0, 0.0, 0.0); // Just so it is not the zero-vector
-            Aks[0] = 0.0;
-        } else {
-            resize(number_of_k_vectors); // maximum possible number of k-vectors
-            number_of_k_vectors = 0;     // reset and count again...
-            const vec3 two_pi_inverse_box_length = 2.0 * pi * box_length.cwiseInverse();
-            for (int nx = -reciprocal_cutoff; nx < reciprocal_cutoff + 1; nx++) {
-                for (int ny = -reciprocal_cutoff; ny < reciprocal_cutoff + 1; ny++) {
-                    for (int nz = -reciprocal_cutoff; nz < reciprocal_cutoff + 1; nz++) {
-                        if (inside_cutoff(nx, ny, nz)) {
-                            k_vectors.col(number_of_k_vectors++) =
-                                two_pi_inverse_box_length.cwiseProduct(vec3(nx, ny, nz));
-                        }
-                    }
-                }
-            }
-            resize(number_of_k_vectors); // shrink if needed due to cutoff
-            setAks();
         }
     }
 
@@ -1535,35 +1516,62 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
         return Q;
     }
 
+  public:
+    const Ewald real_space; //!< Real-space energy functions
+
+    explicit ReciprocalEwaldGaussian(const ReciprocalEwaldState &state)
+        : ReciprocalEwaldState(state), real_space(state) {
+        generateKVectors(state.box_length);
+    }
+
+    // @todo incomplete; mostly copied from faunus
+    inline void generateKVectors(const vec3 &box_length) {
+        auto inside_cutoff = [cutoff_squared = reciprocal_cutoff * reciprocal_cutoff](auto nx, auto ny, auto nz) {
+            const auto r = nx * nx + ny * ny + nz * nz;
+            return (r > 0 && r <= cutoff_squared);
+        }; // lambda to determine if wave-vector is within spherical cut-off
+
+        this->box_length = box_length;
+        int number_of_k_vectors = std::pow(2 * reciprocal_cutoff + 1, 3) - 1;
+        if (number_of_k_vectors > 0) {
+            resize(number_of_k_vectors); // allocate maximum possible number of k-vectors
+            number_of_k_vectors = 0;     // reset and count again...
+            const vec3 two_pi_inverse_box_length = 2.0 * pi * box_length.cwiseInverse();
+            for (int nx = -reciprocal_cutoff; nx < reciprocal_cutoff + 1; nx++) {
+                for (int ny = -reciprocal_cutoff; ny < reciprocal_cutoff + 1; ny++) {
+                    for (int nz = -reciprocal_cutoff; nz < reciprocal_cutoff + 1; nz++) {
+                        if (inside_cutoff(nx, ny, nz)) {
+                            k_vectors.col(number_of_k_vectors++) =
+                                two_pi_inverse_box_length.cwiseProduct(vec3(nx, ny, nz));
+                        }
+                    }
+                }
+            }
+        }
+        resize(number_of_k_vectors); // shrink if needed due to above cutoff
+        setAks();
+        Q_mp.setZero();
+    }
+
     /**
      * @brief Updates Q for a set of particles
      *
      * Calculated values are by default _added_ to `Q_mp`, but can be set to
-     * subtract with `binary_op = std::minus<>()`.
+     * subtract with `binary_op = std::minus<>()`. This can be useful for optimized
+     * updates of changes to a subset of the particles.
      */
     template <class Positions, class Charges, class Dipoles, class BinaryOp = std::plus<>>
-    void updateComplex(Positions &positions, Charges &charges, Dipoles &dipoles,
-                       BinaryOp binary_op = std::plus<>()) {
+    void updateComplex(Positions &positions, Charges &charges, Dipoles &dipoles, BinaryOp binary_op = std::plus<>()) {
         for (int i = 0; i < k_vectors.cols(); i++) {
             Q_mp[i] = binary_op(Q_mp[i], calcQ(k_vectors.col(i), positions, charges, dipoles));
         }
     }
 
     /**
-     * @brief Updates Q for a set of particles; subtracts old contribution
-     */
-    template <class Positions, class Charges, class Dipoles, class OldPositions, class OldCharges, class OldDipoles>
-    void updateComplex(Positions &positions, Charges &charges, Dipoles &dipoles, OldPositions &old_positions,
-                       OldCharges &old_charges, OldDipoles &old_dipoles) const {
-        updateComplex(positions, charges, dipoles, std::plus<>());              // add
-        updateComplex(old_positions, old_charges, old_dipoles, std::minus<>()); // subtract
-    }
-
-    /**
      * @brief Reciprocal-space energy
      */
     inline auto reciprocal_energy() {
-        if constexpr(true) { // Eigen library syntax
+        if constexpr (true) { // Eigen library syntax
             return 2.0 * pi / getVolume() * Q_mp.cwiseAbs2().cwiseProduct(Aks).sum();
         } else {
             double sum = 0.0;
@@ -1584,25 +1592,13 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
     inline vec3 reciprocal_force(const vec3 &position, const double charge, const vec3 &dipole_moment) {
         vec3 sum = {0.0, 0.0, 0.0};
         for (int i = 0; i < k_vectors.cols(); i++) {
-            const double kr = k_vectors.col(i).dot(position); // 𝒌⋅𝒓
-            const auto qmu = Tcomplex(-dipole_moment.dot(k_vectors.col(i)), charge);
+            const auto &k = k_vectors.col(i);
+            const double kr = k.dot(position); // 𝒌⋅𝒓
+            const auto qmu = Tcomplex(-dipole_moment.dot(k), charge);
             const auto repart = Tcomplex(std::cos(kr), std::sin(kr)) * qmu * std::conj(Q_mp[i]);
-            sum += std::real(repart) * k_vectors.col(i) * Aks[i];
+            sum += std::real(repart) * k * Aks[i];
         }
         return -4.0 * pi / getVolume() * sum;
-    }
-
-    /**
-     * @brief Surface force-term
-     * @param positions Positions of particles
-     * @param charges Charges of particles
-     * @param dipoles Dipole moments of particles
-     * @param charge Charge of particle
-     * @warning Only works for charges
-     */
-    template <typename Positions, typename Charges, typename Dipoles>
-    vec3 surface_force(Positions &positions, Charges &charges, Dipoles &dipoles, const double charge) const {
-        return charge * surface_field(positions, charges, dipoles);
     }
 
     /**
@@ -1627,11 +1623,8 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
      */
     template <typename Positions, typename Charges, typename Dipoles>
     vec3 surface_field(const Positions &positions, const Charges &charges, const Dipoles &dipoles) const {
-        vec3 sum = {0.0, 0.0, 0.0};
-        for (size_t i = 0; i < positions.size(); i++) {
-            sum += positions[i] * charges[i] + dipoles[i];
-        }
-        return -4.0 * pi / (2.0 * surface_dielectric_constant + 1.0) / getVolume() * sum;
+        vec3 total_dipole = dipoleMoment(positions, charges, dipoles);
+        return -4.0 * pi / (2.0 * surface_dielectric_constant + 1.0) / getVolume() * total_dipole;
     }
 
     /**
@@ -1641,15 +1634,22 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
      * @param dipoles Dipole moments of particles
      */
     template <typename Positions, typename Charges, typename Dipoles>
-    double surface_energy(Positions &positions, Charges &charges, Dipoles &dipoles) const {
-        vec3 pos_x_charge = {0.0, 0.0, 0.0};
-        auto charge = charges.begin();
-        std::for_each(positions.begin(), positions.end(),
-                      [&](const auto &position) { pos_x_charge += position * (*charge++); });
-        vec3 dipole_sum = std::accumulate(dipoles.begin(), dipoles.end(), vec3(0, 0, 0));
-        const auto sqDipoles =
-            pos_x_charge.dot(pos_x_charge) + 2.0 * pos_x_charge.dot(dipole_sum) + dipole_sum.dot(dipole_sum);
-        return 2.0 * pi / (2.0 * surface_dielectric_constant + 1.0) / getVolume() * sqDipoles;
+    double surface_energy(const Positions &positions, const Charges &charges, const Dipoles &dipoles) const {
+        vec3 total_dipole = dipoleMoment(positions, charges, dipoles);
+        return 2.0 * pi / (2.0 * surface_dielectric_constant + 1.0) / getVolume() * total_dipole.squaredNorm();
+    }
+
+    /**
+     * @brief Surface force-term
+     * @param positions Positions of particles
+     * @param charges Charges of particles
+     * @param dipoles Dipole moments of particles
+     * @param charge Charge of particle
+     * @warning Only works for charges
+     */
+    template <typename Positions, typename Charges, typename Dipoles>
+    vec3 surface_force(Positions &positions, Charges &charges, Dipoles &dipoles, const double charge) const {
+        return charge * surface_field(positions, charges, dipoles);
     }
 };
 

@@ -680,6 +680,15 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
             CHECK(field_result.total[0] == Approx(2.0003749));
         }
     }
+    SUBCASE("surface terms") {
+        charges = {1.0, -1.0};
+        dipoles = {{1, 1, 1}, {-1, 1, 0}};
+        ewald_data.surface_dielectric_constant = 1.0;
+        ReciprocalEwaldGaussian pot(ewald_data);
+        pot.updateComplex(positions, charges, dipoles);
+        CHECK(pot.surface_energy(positions, charges, dipoles) == Approx(0.0125663706));
+
+    }
 }
 
 TEST_CASE("[CoulombGalore] Ewald (truncated Gaussian) real-space") {
