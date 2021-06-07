@@ -1327,8 +1327,7 @@ class ReciprocalEwaldState {
   public:
     Eigen::Matrix3Xd k_vectors;               //!< k-vectors, 3xK
     Eigen::VectorXd Aks;                      //!< 1xK for update optimization (see Eq.24, DOI:10.1063/1.481216)
-    Eigen::VectorXcd Q_ion;                   //!< Complex 1xK vectors
-    Eigen::VectorXcd Q_dipole;                //!< Complex 1xK vectors
+    Eigen::VectorXcd Q_mp;                   //!< Complex 1xK vectors
     int reciprocal_cutoff = 0.0;              //!< Inverse space cutoff
     double cutoff = 0.0;                      //!< Real-space cutoff
     double surface_dielectric_constant = 0.0; //!< Surface dielectric constant;
@@ -1343,8 +1342,7 @@ class ReciprocalEwaldState {
 
     void resize(int number_of_k_vectors) {
         k_vectors.conservativeResize(3, number_of_k_vectors);
-        Q_ion.resize(number_of_k_vectors);
-        Q_dipole.resize(number_of_k_vectors);
+        Q_mp.resize(number_of_k_vectors);
         Aks.conservativeResize(number_of_k_vectors);
     }
 };
@@ -1523,38 +1521,42 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
      * @param charges Charges of particles
      * @param dipoles Dipole moments of particles
      * @param k Single k-vector
-     * @todo May be optimized to splitting into several loops, enabling SIMD optimization
+     * @todo May be optimized to splitting into several loops for cos/sin, enabling SIMD optimization
      */
     template <typename Positions, typename Charges, typename Dipoles>
-    std::pair<Tcomplex, Tcomplex> calcQ(const vec3 &k, Positions &positions, Charges &charges, Dipoles &dipoles) const {
-        Tcomplex Qq(0.0, 0.0);
-        Tcomplex Qmu(0.0, 0.0);
+    auto calcQ(const vec3 &k, Positions &positions, Charges &charges, Dipoles &dipoles) const {
+        Tcomplex Q(0.0, 0.0);
         for (size_t i = 0; i < positions.size(); i++) {
-            const double kr = k.dot(positions[i]);
+            const double kr = k.dot(positions[i]); // 𝒌⋅𝒓
             const auto cos_kr = std::cos(kr);
             const auto sin_kr = std::sin(kr);
-            Qq += charges[i] * Tcomplex(cos_kr, sin_kr);
-            Qmu += dipoles[i].dot(k) * Tcomplex(-sin_kr, cos_kr);
+            Q += charges[i] * Tcomplex(cos_kr, sin_kr) + dipoles[i].dot(k) * Tcomplex(-sin_kr, cos_kr);
         }
-        return {Qq, Qmu};
+        return Q;
     }
 
     /**
-     * @brief Updates Q for a subset of point charges; subtracts old contribution
+     * @brief Updates Q for a set of particles
+     *
+     * Calculated values are by default _added_ to `Q_mp`, but can be set to
+     * subtract with `binary_op = std::minus<>()`.
+     */
+    template <class Positions, class Charges, class Dipoles, class BinaryOp>
+    void updateComplex(Positions &positions, Charges &charges, Dipoles &dipoles,
+                       BinaryOp binary_op = std::plus<>()) const {
+        for (int i = 0; i < k_vectors.cols(); i++) {
+            Q_mp[i] = binary_op(Q_mp[i], calcQ(k_vectors.col(i), positions, charges, dipoles));
+        }
+    }
+
+    /**
+     * @brief Updates Q for a set of particles; subtracts old contribution
      */
     template <class Positions, class Charges, class Dipoles, class OldPositions, class OldCharges, class OldDipoles>
     void updateComplex(Positions &positions, Charges &charges, Dipoles &dipoles, OldPositions &old_positions,
                        OldCharges &old_charges, OldDipoles &old_dipoles) const {
-        for (int i = 0; i < k_vectors.cols(); i++) {
-            const auto [ion, dipole] = calcQ(k_vectors.col(i), positions, charges, dipoles);
-            Q_ion[i] += ion;
-            Q_dipole[i] += dipole;
-        }
-        for (int i = 0; i < k_vectors.cols(); i++) {
-            const auto [ion, dipole] = calcQ(k_vectors.col(i), old_positions, old_charges, old_dipoles);
-            Q_ion[i] -= ion;
-            Q_dipole[i] -= dipole;
-        }
+        updateComplex(positions, charges, dipoles, std::plus<>());              // add
+        updateComplex(old_positions, old_charges, old_dipoles, std::minus<>()); // subtract
     }
 
     /**
@@ -1564,11 +1566,11 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
      * @param dipoles Dipole moments of particles
      */
     template <typename Positions, typename Charges, typename Dipoles>
-    double reciprocal_energy(Positions &positions, Charges &charges, Dipoles &dipoles) {
+    auto reciprocal_energy(Positions &positions, Charges &charges, Dipoles &dipoles) {
         double sum = 0.0;
         for (int i = 0; i < k_vectors.cols(); i++) {
-            const auto [Q_ion, Q_dipole] = calcQ(k_vectors.col(i), positions, charges, dipoles);
-            sum += powi(std::abs(Q_ion + Q_dipole), 2) * Aks[i];
+            const auto absQ = std::abs(calcQ(k_vectors.col(i), positions, charges, dipoles));
+            sum += absQ * absQ * Aks[i];
         }
         return 2.0 * pi / getVolume() * sum;
     }
@@ -1587,13 +1589,10 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
                           const double charge, const vec3 &dipole_moment) {
         vec3 sum = {0.0, 0.0, 0.0};
         for (int i = 0; i < k_vectors.cols(); i++) {
-            const auto [Q_ion, Q_dipole] = calcQ(k_vectors.col(i), positions, charges, dipoles);
-            const auto Q = Q_ion + Q_dipole;
-            const double kDotR = k_vectors.col(i).dot(position);
-            const auto coskDotR = std::cos(kDotR);
-            const auto sinkDotR = std::sin(kDotR);
-            const auto qmu = Tcomplex(-dipole_moment.dot(k_vectors.col(i)), charge);
-            const auto repart = Tcomplex(coskDotR, sinkDotR) * qmu * std::conj(Q);
+            const auto Q = calcQ(k_vectors.col(i), positions, charges, dipoles);
+            const double kr = k_vectors.col(i).dot(position); // 𝒌⋅𝒓
+            const Tcomplex qmu = {-dipole_moment.dot(k_vectors.col(i)), charge};
+            const auto repart = Tcomplex(std::cos(kr), std::sin(kr)) * qmu * std::conj(Q);
             sum += std::real(repart) * k_vectors.col(i) * Aks[i];
         }
         return -4.0 * pi / getVolume() * sum;
@@ -1623,13 +1622,9 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
     vec3 reciprocal_field(Positions &positions, Charges &charges, Dipoles &dipoles, const vec3 &position) {
         vec3 field = {0.0, 0.0, 0.0};
         for (int i = 0; i < k_vectors.cols(); i++) {
-            const auto [Q_ion, Q_dipole] = calcQ(k_vectors.col(i), positions, charges, dipoles);
-            const auto Q = Q_ion + Q_dipole;
-            const double kDotR = k_vectors.col(i).dot(position);
-            const auto coskDotR = std::cos(kDotR);
-            const auto sinkDotR = std::sin(kDotR);
-            const auto expKrii = Tcomplex(-sinkDotR, coskDotR);
-            Tcomplex repart = expKrii * std::conj(Q);
+            const auto Q = calcQ(k_vectors.col(i), positions, charges, dipoles);
+            const double kr = k_vectors.col(i).dot(position); // 𝒌⋅𝒓
+            const auto repart = Tcomplex(-std::sin(kr), std::cos(kr)) * std::conj(Q);
             field += std::real(repart) * k_vectors.col(i) * Aks[i];
         }
         return -4.0 * pi / getVolume() * field;
@@ -1642,7 +1637,7 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
      * @param dipoles Dipole moments of particles
      */
     template <typename Positions, typename Charges, typename Dipoles>
-    vec3 surface_field(Positions &positions, Charges &charges, Dipoles &dipoles) const {
+    vec3 surface_field(const Positions &positions, const Charges &charges, const Dipoles &dipoles) const {
         vec3 sum = {0.0, 0.0, 0.0};
         for (size_t i = 0; i < positions.size(); i++) {
             sum += positions[i] * charges[i] + dipoles[i];
