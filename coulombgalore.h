@@ -1311,8 +1311,8 @@ class Plain : public EnergyImplementation<Plain> {
 /**
  * @brief Data class for Ewald k-space calculations
  *
- * Currently, the Eigen policies map to the non-eigen
- * variants, e.g. `PBCEigen == PBC`.
+ * This contains the _state_ of reciprocal Ewald algorithms.
+ * Policies are currently not in use.
  *
  * Related reading:
  * - PBC Ewald (DOI:10.1063/1.481216)
@@ -1591,7 +1591,7 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
         for (int i = 0; i < k_vectors.cols(); i++) {
             const auto Q = calcQ(k_vectors.col(i), positions, charges, dipoles);
             const double kr = k_vectors.col(i).dot(position); // 𝒌⋅𝒓
-            const Tcomplex qmu = {-dipole_moment.dot(k_vectors.col(i)), charge};
+            const auto qmu = Tcomplex(-dipole_moment.dot(k_vectors.col(i)), charge);
             const auto repart = Tcomplex(std::cos(kr), std::sin(kr)) * qmu * std::conj(Q);
             sum += std::real(repart) * k_vectors.col(i) * Aks[i];
         }
