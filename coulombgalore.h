@@ -1321,13 +1321,12 @@ class Plain : public EnergyImplementation<Plain> {
  */
 class ReciprocalEwaldState {
   protected:
-    const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
     const double pi = 4.0 * std::atan(1.0);
+    Eigen::Matrix3Xd k_vectors; //!< k-vectors, 3xK
+    Eigen::VectorXd Aks;        //!< 1xK for update optimization (see Eq.24, DOI:10.1063/1.481216)
+    Eigen::VectorXcd Q_mp;      //!< Complex 1xK vectors
 
   public:
-    Eigen::Matrix3Xd k_vectors;               //!< k-vectors, 3xK
-    Eigen::VectorXd Aks;                      //!< 1xK for update optimization (see Eq.24, DOI:10.1063/1.481216)
-    Eigen::VectorXcd Q_mp;                   //!< Complex 1xK vectors
     int reciprocal_cutoff = 0.0;              //!< Inverse space cutoff
     double cutoff = 0.0;                      //!< Real-space cutoff
     double surface_dielectric_constant = 0.0; //!< Surface dielectric constant;
@@ -1542,7 +1541,7 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
      * Calculated values are by default _added_ to `Q_mp`, but can be set to
      * subtract with `binary_op = std::minus<>()`.
      */
-    template <class Positions, class Charges, class Dipoles, class BinaryOp>
+    template <class Positions, class Charges, class Dipoles, class BinaryOp = std::plus<>>
     void updateComplex(Positions &positions, Charges &charges, Dipoles &dipoles,
                        BinaryOp binary_op = std::plus<>()) {
         for (int i = 0; i < k_vectors.cols(); i++) {
@@ -1564,12 +1563,16 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
      * @brief Reciprocal-space energy
      */
     inline auto reciprocal_energy() {
-        double sum = 0.0;
-        for (int i = 0; i < k_vectors.cols(); i++) {
-            const auto absQ = std::abs(Q_mp[i]);
-            sum += absQ * absQ * Aks[i];
+        if constexpr(true) { // Eigen library syntax
+            return 2.0 * pi / getVolume() * Q_mp.cwiseAbs2().cwiseProduct(Aks).sum();
+        } else {
+            double sum = 0.0;
+            for (int i = 0; i < k_vectors.cols(); i++) {
+                const auto absQ = std::abs(Q_mp[i]);
+                sum += absQ * absQ * Aks[i];
+            }
+            return 2.0 * pi / getVolume() * sum;
         }
-        return 2.0 * pi / getVolume() * sum;
     }
 
     /**

@@ -572,7 +572,7 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
         SUBCASE("infinite dielectric") {
             ewald_data.surface_dielectric_constant = infinity;
             ReciprocalEwaldGaussian pot(ewald_data);
-            pot.updateComplex(positions, charges, dipoles, std::plus<>());
+            pot.updateComplex(positions, charges, dipoles);
 
             auto energy_result = testEnergy(pot, positions, charges, dipoles);
             CHECK(energy_result.real == Approx(-0.2578990353));
@@ -618,7 +618,7 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
         SUBCASE("unity dielectric") {
             ewald_data.surface_dielectric_constant = 1.0;
             ReciprocalEwaldGaussian pot(ewald_data);
-            pot.updateComplex(positions, charges, dipoles, std::plus<>());
+            pot.updateComplex(positions, charges, dipoles);
             auto energy_result = testEnergy(pot, positions, charges, dipoles);
             auto field_result = testField(pot, positions, charges, dipoles);
 
@@ -639,7 +639,7 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
         SUBCASE("infinite surface dielectric") {
             ewald_data.surface_dielectric_constant = infinity;
             ReciprocalEwaldGaussian pot(ewald_data);
-            pot.updateComplex(positions, charges, dipoles, std::plus<>());
+            pot.updateComplex(positions, charges, dipoles);
 
             auto energy_result = testEnergy(pot, positions, charges, dipoles);
             auto field_result = testField(pot, positions, charges, dipoles);
@@ -667,7 +667,7 @@ TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
         SUBCASE("unity surface dielectric") {
             ewald_data.surface_dielectric_constant = 1.0;
             ReciprocalEwaldGaussian pot(ewald_data);
-            pot.updateComplex(positions, charges, dipoles, std::plus<>());
+            pot.updateComplex(positions, charges, dipoles);
 
             auto energy_result = testEnergy(pot, positions, charges, dipoles);
             auto field_result = testField(pot, positions, charges, dipoles);
