@@ -1339,7 +1339,6 @@ class ReciprocalEwaldState {
     Policies policy = PBC;                                     //!< Policy for updating k-space
 
     inline int numKVectors() const { return k_vectors.cols(); }
-
     inline auto getVolume() const { return box_length.prod(); }
 
     void resize(int number_of_k_vectors) {
@@ -1479,8 +1478,8 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
 
     void setAks() {
         const auto cutoff_squared = cutoff * cutoff;
-        const auto reduced_damping_squared = std::pow(alpha * cutoff, 2);
-        const auto reduced_kappa_squared = std::pow(kappa * cutoff, 2);
+        const auto reduced_damping_squared = alpha * alpha * cutoff_squared;
+        const auto reduced_kappa_squared = kappa * kappa * cutoff_squared;
         for (int i = 0; i < Aks.size(); i++) {
             const double k2 = k_vectors.col(i).squaredNorm() + kappa * kappa;
             Aks[i] = std::exp(-(k2 * cutoff_squared + reduced_kappa_squared) / (4.0 * reduced_damping_squared)) / k2;
@@ -1498,12 +1497,10 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
         if (number_of_k_vectors == 0) {
             resize(1);
             k_vectors.col(0) = vec3(1.0, 0.0, 0.0); // Just so it is not the zero-vector
-            Aks[0] = 0;
+            Aks[0] = 0.0;
         } else {
-            resize(number_of_k_vectors);
-            k_vectors.setZero();
-            Aks.setZero();
-            number_of_k_vectors = 0;
+            resize(number_of_k_vectors); // maximum possible number of k-vectors
+            number_of_k_vectors = 0;     // reset and count again...
             const vec3 two_pi_inverse_box_length = 2.0 * pi * box_length.cwiseInverse();
             for (int nx = -reciprocal_cutoff; nx < reciprocal_cutoff + 1; nx++) {
                 for (int ny = -reciprocal_cutoff; ny < reciprocal_cutoff + 1; ny++) {
@@ -1529,8 +1526,7 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
      * @todo May be optimized to splitting into several loops, enabling SIMD optimization
      */
     template <typename Positions, typename Charges, typename Dipoles>
-    std::pair<Tcomplex, Tcomplex> calcQ(Positions &positions, Charges &charges, Dipoles &dipoles,
-                                        const vec3 &k) const {
+    std::pair<Tcomplex, Tcomplex> calcQ(const vec3 &k, Positions &positions, Charges &charges, Dipoles &dipoles) const {
         Tcomplex Qq(0.0, 0.0);
         Tcomplex Qmu(0.0, 0.0);
         for (size_t i = 0; i < positions.size(); i++) {
@@ -1545,27 +1541,36 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
 
     /**
      * @brief Updates Q for a subset of point charges; subtracts old contribution
-     * @param data Ewald data to update
-     * @param begin begin iterator current position
-     * @param end end iterator to current position
-     * @param charge_iter begin iterator to current charge
-     * @param old_begin begin iterator to old position
-     * @param old_end end iterator to old position
-     * @param old_charge_iter begin iterator to old charge
      */
     template <class Positions, class Charges, class Dipoles, class OldPositions, class OldCharges, class OldDipoles>
     void updateComplex(Positions &positions, Charges &charges, Dipoles &dipoles, OldPositions &old_positions,
                        OldCharges &old_charges, OldDipoles &old_dipoles) const {
         for (int i = 0; i < k_vectors.cols(); i++) {
-            const auto [ion, dipole] = calcQ(positions, charges, dipoles, k_vectors.col(i));
+            const auto [ion, dipole] = calcQ(k_vectors.col(i), positions, charges, dipoles);
             Q_ion[i] += ion;
             Q_dipole[i] += dipole;
         }
         for (int i = 0; i < k_vectors.cols(); i++) {
-            const auto [ion, dipole] = calcQ(old_positions, old_charges, old_dipoles, k_vectors.col(i));
+            const auto [ion, dipole] = calcQ(k_vectors.col(i), old_positions, old_charges, old_dipoles);
             Q_ion[i] -= ion;
             Q_dipole[i] -= dipole;
         }
+    }
+
+    /**
+     * @brief Reciprocal-space energy
+     * @param positions Positions of particles
+     * @param charges Charges of particles
+     * @param dipoles Dipole moments of particles
+     */
+    template <typename Positions, typename Charges, typename Dipoles>
+    double reciprocal_energy(Positions &positions, Charges &charges, Dipoles &dipoles) {
+        double sum = 0.0;
+        for (int i = 0; i < k_vectors.cols(); i++) {
+            const auto [Q_ion, Q_dipole] = calcQ(k_vectors.col(i), positions, charges, dipoles);
+            sum += powi(std::abs(Q_ion + Q_dipole), 2) * Aks[i];
+        }
+        return 2.0 * pi / getVolume() * sum;
     }
 
     /**
@@ -1580,18 +1585,18 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
     template <typename Positions, typename Charges, typename Dipoles>
     vec3 reciprocal_force(Positions &positions, Charges &charges, Dipoles &dipoles, const vec3 &position,
                           const double charge, const vec3 &dipole_moment) {
-        vec3 force = {0.0, 0.0, 0.0};
+        vec3 sum = {0.0, 0.0, 0.0};
         for (int i = 0; i < k_vectors.cols(); i++) {
-            const auto [Q_ion, Q_dipole] = calcQ(positions, charges, dipoles, k_vectors.col(i));
+            const auto [Q_ion, Q_dipole] = calcQ(k_vectors.col(i), positions, charges, dipoles);
             const auto Q = Q_ion + Q_dipole;
             const double kDotR = k_vectors.col(i).dot(position);
             const auto coskDotR = std::cos(kDotR);
             const auto sinkDotR = std::sin(kDotR);
             const auto qmu = Tcomplex(-dipole_moment.dot(k_vectors.col(i)), charge);
             const auto repart = Tcomplex(coskDotR, sinkDotR) * qmu * std::conj(Q);
-            force += std::real(repart) * k_vectors.col(i) * Aks[i];
+            sum += std::real(repart) * k_vectors.col(i) * Aks[i];
         }
-        return (-force * 4.0 * pi / getVolume());
+        return -4.0 * pi / getVolume() * sum;
     }
 
     /**
@@ -1618,7 +1623,7 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
     vec3 reciprocal_field(Positions &positions, Charges &charges, Dipoles &dipoles, const vec3 &position) {
         vec3 field = {0.0, 0.0, 0.0};
         for (int i = 0; i < k_vectors.cols(); i++) {
-            const auto [Q_ion, Q_dipole] = calcQ(positions, charges, dipoles, k_vectors.col(i));
+            const auto [Q_ion, Q_dipole] = calcQ(k_vectors.col(i), positions, charges, dipoles);
             const auto Q = Q_ion + Q_dipole;
             const double kDotR = k_vectors.col(i).dot(position);
             const auto coskDotR = std::cos(kDotR);
@@ -1627,7 +1632,7 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
             Tcomplex repart = expKrii * std::conj(Q);
             field += std::real(repart) * k_vectors.col(i) * Aks[i];
         }
-        return (-field * 4.0 * pi / getVolume());
+        return -4.0 * pi / getVolume() * field;
     }
 
     /**
@@ -1638,27 +1643,11 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
      */
     template <typename Positions, typename Charges, typename Dipoles>
     vec3 surface_field(Positions &positions, Charges &charges, Dipoles &dipoles) const {
-        vec3 sum_r_charges_dipoles = {0.0, 0.0, 0.0};
+        vec3 sum = {0.0, 0.0, 0.0};
         for (size_t i = 0; i < positions.size(); i++) {
-            sum_r_charges_dipoles += positions[i] * charges[i] + dipoles[i];
+            sum += positions[i] * charges[i] + dipoles[i];
         }
-        return (-4.0 * pi / (2.0 * surface_dielectric_constant + 1.0) / getVolume() * sum_r_charges_dipoles);
-    }
-
-    /**
-     * @brief Reciprocal-space energy
-     * @param positions Positions of particles
-     * @param charges Charges of particles
-     * @param dipoles Dipole moments of particles
-     */
-    template <typename Positions, typename Charges, typename Dipoles>
-    double reciprocal_energy(Positions &positions, Charges &charges, Dipoles &dipoles) {
-        double energy = 0.0;
-        for (int i = 0; i < k_vectors.cols(); i++) {
-            const auto [Q_ion, Q_dipole] = calcQ(positions, charges, dipoles, k_vectors.col(i));
-            energy += powi(std::abs(Q_ion + Q_dipole), 2) * Aks[i];
-        }
-        return 2.0 * pi / getVolume() * energy;
+        return -4.0 * pi / (2.0 * surface_dielectric_constant + 1.0) / getVolume() * sum;
     }
 
     /**
