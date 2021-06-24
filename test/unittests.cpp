@@ -130,9 +130,10 @@ TEST_CASE("[CoulombGalore] plain") {
     mat33 quadA, quadB;     // quadrupole moment
     quadA << 3, 7, 8, 5, 9, 6, 2, 1, 4;
     quadB << 0, 0, 0, 0, 0, 0, 0, 0, 0;
-    vec3 r = {23, 0, 0};    // distance vector
-    vec3 rq = {5.75*std::sqrt(6.0), 5.75*std::sqrt(2.0), 11.5*std::sqrt(2.0)};    // distance vector for quadrupole check
-    vec3 rh = {1, 0, 0};    // normalized distance vector
+    vec3 r = {23, 0, 0}; // distance vector
+    vec3 rq = {5.75 * std::sqrt(6.0), 5.75 * std::sqrt(2.0),
+               11.5 * std::sqrt(2.0)}; // distance vector for quadrupole check
+    vec3 rh = {1, 0, 0};               // normalized distance vector
     Plain pot;
 
     // Test self energy
@@ -247,32 +248,33 @@ TEST_CASE("[CoulombGalore] plain") {
     CHECK(F_dipoledipole[2] == Approx(F_dipoledipole_approx[2]));
 
     // Approximate a quadrupole by four charges and compare to point-quadrupole
-    d = 1e-4;               // small distance
-    mat33 quad0;            // quadrupole moment
+    d = 1e-4;    // small distance
+    mat33 quad0; // quadrupole moment
     quad0 << -2.38, -0.42, 2.08, -0.42, 0.00, 0.24, 2.08, 0.24, -1.60;
-    vec3 r_quad0_1 = {0.5*d, 0.2*d, 1.0*d};    // distance vector to charge 1
-    vec3 r_quad0_2 = {1.0*d, 0.5*d, 0.2*d};    // distance vector to charge 2
-    vec3 r_quad0_3 = {0.3*d, 0.5*d, 0.6*d};    // distance vector to charge 3
-    vec3 r_quad0_4 = {-0.9*d, 0.2*d, 1.8*d};    // distance vector to charge 4
-    r_z1r = r - r_quad0_1; // distance from charge 1 of quadrupole A to 'r'
-    r_z2r = r - r_quad0_2; // distance from charge 2 of quadrupole A to 'r'
-    vec3 r_z3r = r - r_quad0_3; // distance from charge 1 of quadrupole A to 'r'
-    vec3 r_z4r = r - r_quad0_4; // distance from charge 2 of quadrupole A to 'r'
-    double z_quad0_1 = 1.0 / d/ d;
-    double z_quad0_2 = -2.0 / d/ d;
-    double z_quad0_3 = 2.0 / d/ d;
-    double z_quad0_4 = -1.0 / d/ d;
+    vec3 r_quad0_1 = {0.5 * d, 0.2 * d, 1.0 * d};  // distance vector to charge 1
+    vec3 r_quad0_2 = {1.0 * d, 0.5 * d, 0.2 * d};  // distance vector to charge 2
+    vec3 r_quad0_3 = {0.3 * d, 0.5 * d, 0.6 * d};  // distance vector to charge 3
+    vec3 r_quad0_4 = {-0.9 * d, 0.2 * d, 1.8 * d}; // distance vector to charge 4
+    r_z1r = r - r_quad0_1;                         // distance from charge 1 of quadrupole A to 'r'
+    r_z2r = r - r_quad0_2;                         // distance from charge 2 of quadrupole A to 'r'
+    vec3 r_z3r = r - r_quad0_3;                    // distance from charge 1 of quadrupole A to 'r'
+    vec3 r_z4r = r - r_quad0_4;                    // distance from charge 2 of quadrupole A to 'r'
+    double z_quad0_1 = 1.0 / d / d;
+    double z_quad0_2 = -2.0 / d / d;
+    double z_quad0_3 = 2.0 / d / d;
+    double z_quad0_4 = -1.0 / d / d;
 
-    mat33 quad = r_quad0_1*r_quad0_1.transpose()*z_quad0_1 + r_quad0_2*r_quad0_2.transpose()*z_quad0_2 + r_quad0_3*r_quad0_3.transpose()*z_quad0_3 + r_quad0_4*r_quad0_4.transpose()*z_quad0_4;
-    CHECK(quad(0,0) == Approx(quad0(0,0)));
-    CHECK(quad(0,1) == Approx(quad0(0,1)));
-    CHECK(quad(0,2) == Approx(quad0(0,2)));
-    CHECK(quad(1,0) == Approx(quad0(1,0)));
-    CHECK(quad(1,1) == Approx(quad0(1,1)));
-    CHECK(quad(1,2) == Approx(quad0(1,2)));
-    CHECK(quad(2,0) == Approx(quad0(2,0)));
-    CHECK(quad(2,1) == Approx(quad0(2,1)));
-    CHECK(quad(2,2) == Approx(quad0(2,2)));
+    mat33 quad = r_quad0_1 * r_quad0_1.transpose() * z_quad0_1 + r_quad0_2 * r_quad0_2.transpose() * z_quad0_2 +
+                 r_quad0_3 * r_quad0_3.transpose() * z_quad0_3 + r_quad0_4 * r_quad0_4.transpose() * z_quad0_4;
+    CHECK(quad(0, 0) == Approx(quad0(0, 0)));
+    CHECK(quad(0, 1) == Approx(quad0(0, 1)));
+    CHECK(quad(0, 2) == Approx(quad0(0, 2)));
+    CHECK(quad(1, 0) == Approx(quad0(1, 0)));
+    CHECK(quad(1, 1) == Approx(quad0(1, 1)));
+    CHECK(quad(1, 2) == Approx(quad0(1, 2)));
+    CHECK(quad(2, 0) == Approx(quad0(2, 0)));
+    CHECK(quad(2, 1) == Approx(quad0(2, 1)));
+    CHECK(quad(2, 2) == Approx(quad0(2, 2)));
 
     // Check potentials
     double pot0 = pot.quadrupole_potential(quad0, r);
@@ -472,196 +474,221 @@ TEST_CASE("[CoulombGalore] Fanourgakis") {
     CHECK(Poisson(cutoff, 4, 3).short_range_function(0.5) == Approx(pot.short_range_function(0.5)));
 }
 
+template <class T> struct EwaldResult { T real, reciprocal, surface, self, total; };
+
+template <typename T>
+auto testEnergy(T &pot, std::vector<vec3> &positions, std::vector<double> &charges, std::vector<vec3> &dipoles) {
+    EwaldResult<double> result;
+    vec3 rAB = positions[0] - positions[1];
+    result.real = pot.real_space.ion_ion_energy(charges[0], charges[1], rAB.norm()) +
+                  pot.real_space.dipole_dipole_energy(dipoles[0], dipoles[1], rAB);
+    result.self = pot.real_space.self_energy(
+        {charges[0] * charges[0] + charges[1] * charges[1], dipoles[0].dot(dipoles[0]) + dipoles[1].dot(dipoles[1])});
+    result.surface = pot.surface_energy(positions, charges, dipoles);
+    result.reciprocal = pot.reciprocal_energy();
+    // result.reciprocal = pot.reciprocal_energy(data, positions, charges, dipoles);
+    result.total = result.real + result.self + result.surface + result.reciprocal;
+    return result;
+}
+
+template <typename T>
+auto testForce(T &pot, std::vector<vec3> &positions, std::vector<double> &charges, std::vector<vec3> &dipoles) {
+    EwaldResult<vec3> result;
+    vec3 rAB = positions[0] - positions[1];
+    result.real = pot.real_space.ion_ion_force(charges[0], charges[1], rAB);
+    result.surface = pot.surface_force(positions, charges, dipoles, charges[0]);
+    result.reciprocal = pot.reciprocal_force(positions[0], charges[0], dipoles[0]);
+    result.total = result.real + result.surface + result.reciprocal;
+    return result;
+}
+
+template <typename T>
+auto testField(T &pot, std::vector<vec3> &positions, std::vector<double> &charges, std::vector<vec3> &dipoles) {
+    EwaldResult<vec3> result;
+    vec3 rAB = positions[0] - positions[1];
+    result.real = pot.real_space.ion_field(charges[1], rAB) + pot.real_space.dipole_field(dipoles[1], rAB);
+    result.reciprocal = pot.reciprocal_field(positions[0]);
+    result.self = pot.real_space.self_field({vec3::Zero(), dipoles.at(1)});
+    result.surface = pot.surface_field(positions, charges, dipoles);
+    result.total = result.real + result.self + result.surface + result.reciprocal;
+    return result;
+}
+
 TEST_CASE("[CoulombGalore] Ewald (Gaussian) real-space") {
     using doctest::Approx;
-    double cutoff = 29.0; // cutoff distance
-    double alpha = 0.1;   // damping-parameter
-    double eps_sur = infinity;
-    Ewald pot(cutoff, alpha, eps_sur);
+    std::vector<double> charges;
 
-    CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.2256758334));
-    CHECK(pot.self_energy({0.0, 2.0}) == Approx(-0.0007522527778));
+    SUBCASE("basic") {
+        double cutoff = 29.0; // cutoff distance
+        double alpha = 0.1;   // damping-parameter
+        double eps_sur = infinity;
+        double volume = 2.0;
+        charges = {1.0, -1.0, 2.0, 3.0};
+        Ewald pot(cutoff, alpha, eps_sur);
 
-    // Test short-ranged function
-    CHECK(pot.short_range_function(0.5) == Approx(0.04030497436));
-    CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.399713585));
-    CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.36159125));
-    CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
+        CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.2256758334));
+        CHECK(pot.self_energy({0.0, 2.0}) == Approx(-0.0007522527778));
 
-    std::vector<double> charges = {1.0, -1.0, 2.0, 3.0};
-    double volume = 2.0;
-    CHECK(pot.neutralization_energy(charges, volume) == Approx(-1963.341583564));
+        // Test short-ranged function
+        CHECK(pot.short_range_function(0.5) == Approx(0.04030497436));
+        CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.399713585));
+        CHECK(pot.short_range_function_second_derivative(0.5) == Approx(3.36159125));
+        CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-21.54779991));
+        CHECK(pot.neutralization_energy(charges, volume) == Approx(-1963.341583564));
+        testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
+    }
+    SUBCASE("finite debye length") {
+        double cutoff = 29.0; // cutoff distance
+        double alpha = 0.1;   // damping-parameter
+        double eps_sur = infinity;
+        double debye_length = 23.0;
+        double volume = 2.0;
+        charges = {1.0, -1.0, 2.0, 3.0};
+        Ewald pot(cutoff, alpha, eps_sur, debye_length);
 
-    testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
+        CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.1493013040));
+        CHECK(pot.self_energy({0.0, 2.0}) == Approx(-0.0006704901976));
+        CHECK(pot.short_range_function(0.5) == Approx(0.07306333588));
+        CHECK(pot.short_range_function_derivative(0.5) == Approx(-0.63444119));
+        CHECK(pot.short_range_function_second_derivative(0.5) == Approx(4.423133599));
+        CHECK(pot.short_range_function_third_derivative(0.5) == Approx(-19.85937171));
+        CHECK(pot.neutralization_energy(charges, volume) == Approx(-1917.674014375));
+        testDerivatives(pot, 0.5); // Compare differentiation with numerical diff.
+    }
 
-    double debye_length = 23.0;
-    Ewald potY(cutoff, alpha, eps_sur, debye_length);
+    std::vector<vec3> positions = {{-0.5, 0.0, 0.0}, {0.5, 0.0, 0.0}};
+    std::vector<vec3> dipoles = {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};
 
-    CHECK(potY.self_energy({4.0, 0.0}) == Approx(-0.1493013040));
-    CHECK(potY.self_energy({0.0, 2.0}) == Approx(-0.0006704901976));
+    ReciprocalEwaldState ewald_data;
+    ewald_data.box_length = {10, 10, 10};
+    ewald_data.cutoff = 0.5 * ewald_data.box_length[0];
+    ewald_data.reciprocal_cutoff = 11;
+    ewald_data.alpha = 8.0 / ewald_data.box_length[0];
 
-    // Test short-ranged function
-    CHECK(potY.short_range_function(0.5) == Approx(0.07306333588));
-    CHECK(potY.short_range_function_derivative(0.5) == Approx(-0.63444119));
-    CHECK(potY.short_range_function_second_derivative(0.5) == Approx(4.423133599));
-    CHECK(potY.short_range_function_third_derivative(0.5) == Approx(-19.85937171));
+    SUBCASE("two charges") { // Test against DOI: 10.1063/1.481216 and DOI: 10.1063/1.3599045
+        charges = {1.0, -1.0};
+        dipoles = {vec3::Zero(), vec3::Zero()};
 
-    CHECK(potY.neutralization_energy(charges, volume) == Approx(-1917.674014375));
+        SUBCASE("infinite dielectric") {
+            ewald_data.surface_dielectric_constant = infinity;
+            ReciprocalEwaldGaussian pot(ewald_data);
+            pot.updateComplex(positions, charges, dipoles);
 
-    // Test against DOI: 10.1063/1.481216 and DOI: 10.1063/1.3599045
-    std::vector<vec3> positions;
-    std::vector<vec3> dipoles;
-    positions.resize(2);
-    charges.resize(2);
-    dipoles.resize(2);
-    vec3 zeros = {0.0, 0.0, 0.0};
+            auto energy_result = testEnergy(pot, positions, charges, dipoles);
+            CHECK(energy_result.real == Approx(-0.2578990353));
+            CHECK(energy_result.self == Approx(-0.9027033337));
+            CHECK(energy_result.surface == Approx(0.0));
+            CHECK(energy_result.reciprocal == Approx(0.1584768302));
+            CHECK(energy_result.total == Approx(-1.0021255));
 
-    double L1 = 10.0;
-    volume = L1*L1*L1;
-    vec3 L = {L1, L1, L1};
-    int nmax = 11;
-    cutoff = L1 / 2.0;
-    alpha = 8.0 / L1;
-    vec3 rA = {-0.5, 0.0, 0.0};
-    vec3 rB = {0.5, 0.0, 0.0};
-    positions.at(0) = rA;
-    positions.at(1) = rB;
-    vec3 rAB = rA - rB;
+            auto force_result = testForce(pot, positions, charges, dipoles);
+            CHECK(force_result.real[0] == Approx(0.7338876643));
+            CHECK(force_result.real[1] == Approx(0.0));
+            CHECK(force_result.real[2] == Approx(0.0));
+            CHECK(force_result.surface[0] == Approx(0.0));
+            CHECK(force_result.surface[1] == Approx(0.0));
+            CHECK(force_result.surface[2] == Approx(0.0));
+            CHECK(force_result.reciprocal[0] == Approx(0.2617988467));
+            CHECK(force_result.reciprocal[1] == Approx(0.0));
+            CHECK(force_result.reciprocal[2] == Approx(0.0));
+            CHECK(force_result.total[0] == Approx(0.9956865));
 
-    // -- two charges
-    double qA = 1.0;
-    double qB = -1.0;
-    vec3 muA = {0.0, 0.0, 0.0};
-    vec3 muB = {0.0, 0.0, 0.0};
-    charges.at(0) = qA;
-    charges.at(1) = qB;
-    dipoles.at(0) = muA;
-    dipoles.at(1) = muB;
+            auto field_result = testField(pot, positions, charges, dipoles);
+            CHECK(field_result.real[0] == Approx(0.7338876643));
+            CHECK(field_result.real[1] == Approx(0.0));
+            CHECK(field_result.real[2] == Approx(0.0));
+            CHECK(field_result.reciprocal[0] == Approx(0.2617988467));
+            CHECK(field_result.reciprocal[1] == Approx(0.0));
+            CHECK(field_result.reciprocal[2] == Approx(0.0));
+            CHECK(field_result.self[0] == Approx(0.0));
+            CHECK(field_result.self[1] == Approx(0.0));
+            CHECK(field_result.self[2] == Approx(0.0));
+            CHECK(field_result.surface[0] == Approx(0.0));
+            CHECK(field_result.surface[1] == Approx(0.0));
+            CHECK(field_result.surface[2] == Approx(0.0));
+            CHECK(field_result.total[0] == Approx(0.9956865));
+            SUBCASE("ReciprocalEwaldState field") {
+                auto reciprocal_field = pot.reciprocal_field(positions[0]);
+                CHECK(reciprocal_field[0] == Approx(0.2617988467));
+                CHECK(reciprocal_field[1] == Approx(0.0));
+                CHECK(reciprocal_field[2] == Approx(0.0));
+            }
+        }
 
-    // ---- infinite diel. coeff. of surrounding
-    eps_sur = infinity;
-    Ewald pot_reci_inf(cutoff, alpha, eps_sur);
+        SUBCASE("unity dielectric") {
+            ewald_data.surface_dielectric_constant = 1.0;
+            ReciprocalEwaldGaussian pot(ewald_data);
+            pot.updateComplex(positions, charges, dipoles);
+            auto energy_result = testEnergy(pot, positions, charges, dipoles);
+            auto field_result = testField(pot, positions, charges, dipoles);
 
-    double real_energy = pot_reci_inf.ion_ion_energy(qA, qB, rAB.norm());
-    double self_energy = pot_reci_inf.self_energy({qA*qA + qB*qB, 0.0});
-    double surface_energy = pot_reci_inf.surface_energy(positions, charges, dipoles, volume);
-    double reciprocal_energy = pot_reci_inf.reciprocal_energy(positions,charges,dipoles,L,nmax);
-    CHECK(real_energy == Approx(-0.2578990353));
-    CHECK(self_energy == Approx(-0.9027033337));
-    CHECK(surface_energy == Approx(0.0));
-    CHECK(reciprocal_energy == Approx(0.1584768302));
-    CHECK(real_energy+self_energy+surface_energy+reciprocal_energy == Approx(-1.0021255));
+            CHECK(energy_result.surface == Approx(0.0020943951));
+            CHECK(energy_result.real + energy_result.self + energy_result.surface + energy_result.reciprocal ==
+                  Approx(-1.0000311));
+            CHECK(field_result.surface[0] == Approx(0.0041887902));
+            CHECK(field_result.surface[1] == Approx(0.0));
+            CHECK(field_result.surface[2] == Approx(0.0));
+            CHECK(field_result.total[0] == Approx(0.9998753));
+        }
+    }
 
-    vec3 real_force = pot_reci_inf.ion_ion_force(qA, qB, rAB);
-    CHECK(real_force[0] == Approx(0.7338876643));
-    CHECK(real_force[1] == Approx(0.0));
-    CHECK(real_force[2] == Approx(0.0));
+    SUBCASE("two dipoles") {
+        charges = {0.0, 0.0};
+        dipoles = {{1.0, 0.0, 0.0}, {1.0, 0.0, 0.0}};
 
-    vec3 surface_force = pot_reci_inf.surface_force(positions, charges, dipoles, volume, qA);
-    CHECK(surface_force[0] == Approx(0.0));
-    CHECK(surface_force[1] == Approx(0.0));
-    CHECK(surface_force[2] == Approx(0.0));
+        SUBCASE("infinite surface dielectric") {
+            ewald_data.surface_dielectric_constant = infinity;
+            ReciprocalEwaldGaussian pot(ewald_data);
+            pot.updateComplex(positions, charges, dipoles);
 
-    vec3 reciprocal_force = pot_reci_inf.reciprocal_force(positions, charges, dipoles, L, nmax, rA, qA, muA);
-    CHECK(reciprocal_force[0] == Approx(0.2617988467));
-    CHECK(reciprocal_force[1] == Approx(0.0));
-    CHECK(reciprocal_force[2] == Approx(0.0));
+            auto energy_result = testEnergy(pot, positions, charges, dipoles);
+            auto field_result = testField(pot, positions, charges, dipoles);
 
-    CHECK(real_force[0]+reciprocal_force[0]+surface_force[0] == Approx(0.9956865));
+            CHECK(energy_result.real == Approx(-2.0770407737));
+            CHECK(energy_result.self == Approx(-0.3851534224));
+            CHECK(energy_result.surface == Approx(0.0));
+            CHECK(energy_result.reciprocal == Approx(0.4534417045));
+            CHECK(energy_result.total == Approx(-2.0087525));
+            CHECK(field_result.real[0] == Approx(2.0770407737));
+            CHECK(field_result.real[1] == Approx(0.0));
+            CHECK(field_result.real[2] == Approx(0.0));
+            CHECK(field_result.reciprocal[0] == Approx(-0.4534417045));
+            CHECK(field_result.reciprocal[1] == Approx(0.0));
+            CHECK(field_result.reciprocal[2] == Approx(0.0));
+            CHECK(field_result.self[0] == Approx(0.3851534224));
+            CHECK(field_result.self[1] == Approx(0.0));
+            CHECK(field_result.self[2] == Approx(0.0));
+            CHECK(field_result.surface[0] == Approx(0.0));
+            CHECK(field_result.surface[1] == Approx(0.0));
+            CHECK(field_result.surface[2] == Approx(0.0));
+            CHECK(field_result.total[0] == Approx(2.0087525));
+        }
 
-    vec3 real_field = pot_reci_inf.ion_field(qB, rAB);
-    CHECK(real_field[0] == Approx(0.7338876643));
-    CHECK(real_field[1] == Approx(0.0));
-    CHECK(real_field[2] == Approx(0.0));
+        SUBCASE("unity surface dielectric") {
+            ewald_data.surface_dielectric_constant = 1.0;
+            ReciprocalEwaldGaussian pot(ewald_data);
+            pot.updateComplex(positions, charges, dipoles);
 
-    vec3 reciprocal_field = pot_reci_inf.reciprocal_field(positions, charges, dipoles, L, nmax, rA);
-    CHECK(reciprocal_field[0] == Approx(0.2617988467));
-    CHECK(reciprocal_field[1] == Approx(0.0));
-    CHECK(reciprocal_field[2] == Approx(0.0));
+            auto energy_result = testEnergy(pot, positions, charges, dipoles);
+            auto field_result = testField(pot, positions, charges, dipoles);
 
-    vec3 self_field = pot_reci_inf.self_field({zeros, dipoles.at(1)});
-    CHECK(self_field[0] == Approx(0.0));
-    CHECK(self_field[1] == Approx(0.0));
-    CHECK(self_field[2] == Approx(0.0));
+            CHECK(energy_result.surface == Approx(0.0083775804));
+            CHECK(energy_result.total == Approx(-2.0003749));
+            CHECK(field_result.surface[0] == Approx(-0.0083775804));
+            CHECK(field_result.surface[1] == Approx(0.0));
+            CHECK(field_result.surface[2] == Approx(0.0));
+            CHECK(field_result.total[0] == Approx(2.0003749));
+        }
+    }
+    SUBCASE("surface terms") {
+        charges = {1.0, -1.0};
+        dipoles = {{1, 1, 1}, {-1, 1, 0}};
+        ewald_data.surface_dielectric_constant = 1.0;
+        ReciprocalEwaldGaussian pot(ewald_data);
+        pot.updateComplex(positions, charges, dipoles);
+        CHECK(pot.surface_energy(positions, charges, dipoles) == Approx(0.0125663706));
 
-    vec3 surface_field = pot_reci_inf.surface_field(positions, charges, dipoles, volume);
-    CHECK(surface_field[0] == Approx(0.0));
-    CHECK(surface_field[1] == Approx(0.0));
-    CHECK(surface_field[2] == Approx(0.0));
-
-    CHECK(real_field[0]+reciprocal_field[0]+self_field[0]+surface_field[0] == Approx(0.9956865));
-
-    // ---- unit diel. coeff. of surrounding
-    eps_sur = 1.0;
-    Ewald pot_reci_unit(cutoff, alpha, eps_sur);
-
-    surface_energy = pot_reci_unit.surface_energy(positions, charges, dipoles, volume);
-    CHECK(surface_energy == Approx(0.0020943951));
-    CHECK(real_energy+self_energy+surface_energy+reciprocal_energy == Approx(-1.0000311));
-
-    surface_field = pot_reci_unit.surface_field(positions, charges, dipoles, volume);
-    CHECK(surface_field[0] == Approx(0.0041887902));
-    CHECK(surface_field[1] == Approx(0.0));
-    CHECK(surface_field[2] == Approx(0.0));
-
-    CHECK(real_field[0]+reciprocal_field[0]+self_field[0]+surface_field[0] == Approx(0.9998753));
-
-    // -- two dipoles
-    qA = 0.0;
-    qB = 0.0;
-    muA = {1.0, 0.0, 0.0};
-    muB = {1.0, 0.0, 0.0};
-    charges.at(0) = qA;
-    charges.at(1) = qB;
-    dipoles.at(0) = muA;
-    dipoles.at(1) = muB;
-
-    // ---- infinite diel. coeff. of surrounding
-
-    real_energy = pot_reci_inf.dipole_dipole_energy(muA, muB, rAB);
-    self_energy = pot_reci_inf.self_energy({qA*qA + qB*qB, muA.dot(muA) + muB.dot(muB)});
-    surface_energy = pot_reci_inf.surface_energy(positions, charges, dipoles, volume);
-    reciprocal_energy = pot_reci_inf.reciprocal_energy(positions,charges,dipoles,L,nmax);
-    CHECK(real_energy == Approx(-2.0770407737));
-    CHECK(self_energy == Approx(-0.3851534224));
-    CHECK(surface_energy == Approx(0.0));
-    CHECK(reciprocal_energy == Approx(0.4534417045));
-    CHECK(real_energy+self_energy+surface_energy+reciprocal_energy == Approx(-2.0087525));
-
-    real_field = pot_reci_inf.dipole_field(muB, rAB);
-    CHECK(real_field[0] == Approx(2.0770407737 ));
-    CHECK(real_field[1] == Approx(0.0));
-    CHECK(real_field[2] == Approx(0.0));
-
-    reciprocal_field = pot_reci_inf.reciprocal_field(positions, charges, dipoles, L, nmax, rA);
-    CHECK(reciprocal_field[0] == Approx(-0.4534417045));
-    CHECK(reciprocal_field[1] == Approx(0.0));
-    CHECK(reciprocal_field[2] == Approx(0.0));
-
-    self_field = pot_reci_inf.self_field({zeros, muB});
-    CHECK(self_field[0] == Approx(0.3851534224));
-    CHECK(self_field[1] == Approx(0.0));
-    CHECK(self_field[2] == Approx(0.0));
-
-    surface_field = pot_reci_inf.surface_field(positions, charges, dipoles, volume);
-    CHECK(surface_field[0] == Approx(0.0));
-    CHECK(surface_field[1] == Approx(0.0));
-    CHECK(surface_field[2] == Approx(0.0));
-
-    CHECK(real_field[0]+reciprocal_field[0]+self_field[0]+surface_field[0] == Approx(2.0087525));
-
-    // ---- unit diel. coeff. of surrounding
-
-    surface_energy = pot_reci_unit.surface_energy(positions, charges, dipoles, volume);
-    CHECK(surface_energy == Approx(0.0083775804));
-    CHECK(real_energy+self_energy+surface_energy+reciprocal_energy == Approx(-2.0003749));
-
-    surface_field = pot_reci_unit.surface_field(positions, charges, dipoles, volume);
-    CHECK(surface_field[0] == Approx(-0.0083775804));
-    CHECK(surface_field[1] == Approx(0.0));
-    CHECK(surface_field[2] == Approx(0.0));
-
-    CHECK(real_field[0]+reciprocal_field[0]+self_field[0]+surface_field[0] == Approx(2.0003749));
+    }
 }
 
 TEST_CASE("[CoulombGalore] Ewald (truncated Gaussian) real-space") {
@@ -723,9 +750,10 @@ TEST_CASE("[CoulombGalore] Poisson") {
     mat33 quadA, quadB;     // quadrupole moment
     quadA << 3, 7, 8, 5, 9, 6, 2, 1, 4;
     quadB << 0, 0, 0, 0, 0, 0, 0, 0, 0;
-    vec3 r = {23, 0, 0};    // distance vector
-    vec3 rq = {5.75*std::sqrt(6.0), 5.75*std::sqrt(2.0), 11.5*std::sqrt(2.0)};    // distance vector for quadrupole check
-    vec3 rh = {1, 0, 0};    // normalized distance vector
+    vec3 r = {23, 0, 0}; // distance vector
+    vec3 rq = {5.75 * std::sqrt(6.0), 5.75 * std::sqrt(2.0),
+               11.5 * std::sqrt(2.0)}; // distance vector for quadrupole check
+    vec3 rh = {1, 0, 0};               // normalized distance vector
     Poisson pot43(cutoff, C, D);
 
     // Test short-ranged function
@@ -740,7 +768,7 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(pot43.dipole_potential(muA, cutoff * rh) == Approx(0.0));
     CHECK(pot43.dipole_potential(muA, r) == Approx(0.005750206554));
     CHECK(pot43.quadrupole_potential(quadA, rq) == Approx(0.000899228165));
-    CHECK(pot43.quadrupole_potential(quadA, rq/23.0*29.0) == Approx(0.0)); // at the cutoff
+    CHECK(pot43.quadrupole_potential(quadA, rq / 23.0 * 29.0) == Approx(0.0)); // at the cutoff
 
     // Test fields
     CHECK(pot43.ion_field(zA, cutoff * rh).norm() == Approx(0.0));
@@ -756,7 +784,7 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(E_quadrupole[0] == Approx(0.00001919309993));
     CHECK(E_quadrupole[1] == Approx(-0.00004053806958));
     CHECK(E_quadrupole[2] == Approx(-0.00003378172465));
-    vec3 E_multipole = pot43.multipole_field(zA,muA,quadA, r);
+    vec3 E_multipole = pot43.multipole_field(zA, muA, quadA, r);
     CHECK(E_multipole[0] == Approx(0.003326991754330));
     CHECK(E_multipole[1] == Approx(-0.00013264664138));
     CHECK(E_multipole[2] == Approx(-0.00017852376605));
@@ -769,9 +797,9 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(pot43.ion_dipole_energy(zB, muA, -r) == Approx(0.01725061966));
     CHECK(pot43.dipole_dipole_energy(muA, muB, cutoff * rh) == Approx(0.0));
     CHECK(pot43.dipole_dipole_energy(muA, muB, r) == Approx(-0.03284312288));
-    CHECK(pot43.ion_quadrupole_energy(zB, quadA, rq/23.0*29.0) == Approx(0.0));
+    CHECK(pot43.ion_quadrupole_energy(zB, quadA, rq / 23.0 * 29.0) == Approx(0.0));
     CHECK(pot43.ion_quadrupole_energy(zB, quadA, rq) == Approx(0.002697684495));
-    CHECK(pot43.ion_quadrupole_energy(zA, quadB, -rq/23.0*29.0) == Approx(0.0));
+    CHECK(pot43.ion_quadrupole_energy(zA, quadB, -rq / 23.0 * 29.0) == Approx(0.0));
     CHECK(pot43.ion_quadrupole_energy(zA, quadB, -rq) == Approx(0.0));
     CHECK(pot43.multipole_multipole_energy(zA, zB, muA, muB, quadA, quadB, r) == Approx(-0.020248530406300));
 
@@ -824,7 +852,7 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(potY.dipole_potential(muA, cutoff * rh) == Approx(0.0));
     CHECK(potY.dipole_potential(muA, r) == Approx(0.01614089171));
     CHECK(potY.quadrupole_potential(quadA, rq) == Approx(0.0016294707475));
-    CHECK(potY.quadrupole_potential(quadA, rq/23.0*29.0) == Approx(0.0)); // at the cutoff
+    CHECK(potY.quadrupole_potential(quadA, rq / 23.0 * 29.0) == Approx(0.0)); // at the cutoff
 
     // Test fields
     CHECK(potY.ion_field(zA, cutoff * rh).norm() == Approx(0.0));
@@ -840,7 +868,7 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(E_quadrupole_Y[0] == Approx(-0.00005233355205));
     CHECK(E_quadrupole_Y[1] == Approx(-0.00007768480608));
     CHECK(E_quadrupole_Y[2] == Approx(-0.00006473733856));
-    vec3 E_multipole_Y = potY.multipole_field(zA,muA,quadA, r);
+    vec3 E_multipole_Y = potY.multipole_field(zA, muA, quadA, r);
     CHECK(E_multipole_Y[0] == Approx(0.006602973162950));
     CHECK(E_multipole_Y[1] == Approx(-0.00033623455838));
     CHECK(E_multipole_Y[2] == Approx(-0.00047102980736));
@@ -853,7 +881,7 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(potY.ion_dipole_energy(zB, muA, -r) == Approx(0.04842267505));
     CHECK(potY.dipole_dipole_energy(muA, muB, cutoff * rh) == Approx(0.0));
     CHECK(potY.dipole_dipole_energy(muA, muB, r) == Approx(-0.05800464321));
-    CHECK(potY.ion_quadrupole_energy(zB, quadA, rq/23.0*29.0) == Approx(0.0));
+    CHECK(potY.ion_quadrupole_energy(zB, quadA, rq / 23.0 * 29.0) == Approx(0.0));
     CHECK(potY.ion_quadrupole_energy(zB, quadA, rq) == Approx(0.004888412229));
     CHECK(potY.multipole_multipole_energy(zA, zB, muA, muB, quadA, quadB, r) == Approx(-0.0211832396518));
 
@@ -884,9 +912,10 @@ TEST_CASE("[CoulombGalore] Poisson") {
     CHECK(F_multipolemultipole_Y[1] == Approx(-0.00762476838194));
     CHECK(F_multipolemultipole_Y[2] == Approx(-0.00486394352018));
 
-    CHECK(Poisson(cutoff, 1, -1).short_range_function(0.5) == Approx(Plain().short_range_function(0.5) ));
-    CHECK(Poisson(cutoff, 1, -1, debye_length).short_range_function(0.5) == Approx(Plain(debye_length).short_range_function(0.5) ));
-    CHECK(Poisson(cutoff, 1, 0).short_range_function(0.5) == Approx(Wolf(cutoff,0.0).short_range_function(0.5) ));
+    CHECK(Poisson(cutoff, 1, -1).short_range_function(0.5) == Approx(Plain().short_range_function(0.5)));
+    CHECK(Poisson(cutoff, 1, -1, debye_length).short_range_function(0.5) ==
+          Approx(Plain(debye_length).short_range_function(0.5)));
+    CHECK(Poisson(cutoff, 1, 0).short_range_function(0.5) == Approx(Wolf(cutoff, 0.0).short_range_function(0.5)));
 }
 
 TEST_CASE("[CoulombGalore] createScheme") {
