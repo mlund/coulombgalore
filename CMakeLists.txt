@@ -38,7 +38,7 @@ if (nlohmann_json_ADDED)
     target_include_directories(nlohmann_json INTERFACE ${nlohmann_json_SOURCE_DIR}/include)
 endif()
 
-include_directories(${CMAKE_SOURCE_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/include)
 
 add_executable(example test/example.cpp)
 target_link_libraries(example Eigen nlohmann_json)

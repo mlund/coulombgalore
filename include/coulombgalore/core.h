@@ -22,6 +22,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 #pragma once
 
 #include <string>
@@ -32,6 +33,7 @@
 #include <array>
 #include <functional>
 #include <memory>
+#include <numeric>
 #include <Eigen/Core>
 #include <Eigen/Dense>
 
@@ -93,7 +95,6 @@ inline constexpr unsigned int factorial(unsigned int n) { return n <= 1 ? 1 : n 
  * @f]
  */
 constexpr unsigned int binomial(signed int n, signed int k) { return factorial(n) / (factorial(k) * factorial(n - k)); }
-
 
 /**
  * @brief Base class for truncation schemes
@@ -839,93 +840,6 @@ template <class T, bool debyehuckel = true> class EnergyImplementation : public 
         const auto charge_sum = std::accumulate(charges.begin(), charges.end(), 0.0);
         return ((this)->chi / 2.0 / volume * charge_sum * charge_sum);
     }
-};
-
-// -------------- Plain ---------------
-
-/**
- * @brief No truncation scheme, cutoff = infinity
- * @warning Neutralization-scheme should not be used using an infinite cut-off
- */
-class Plain : public EnergyImplementation<Plain> {
-  public:
-    inline Plain(double debye_length = infinity)
-        : EnergyImplementation(Scheme::plain, std::sqrt(std::numeric_limits<double>::max()), debye_length) {
-        name = "plain";
-        has_dipolar_selfenergy = true;
-        doi = "Premier mémoire sur l’électricité et le magnétisme by Charles-Augustin de Coulomb"; // :P
-        setSelfEnergyPrefactor({0.0, 0.0});
-        setSelfFieldPrefactor({0.0, 0.0});
-        T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
-        chi = -2.0 * std::acos(-1.0) * cutoff_squared; // should not be used!
-    };
-    inline double short_range_function(double) const override { return 1.0; };
-    inline double short_range_function_derivative(double) const override { return 0.0; }
-    inline double short_range_function_second_derivative(double) const override { return 0.0; }
-    inline double short_range_function_third_derivative(double) const override { return 0.0; }
-#ifdef NLOHMANN_JSON_HPP
-    inline Plain(const nlohmann::json &j) : Plain(j.value("debyelength", infinity)) {}
-
-  private:
-    inline void _to_json(nlohmann::json &) const override {}
-#endif
-};
-
-// -------------- Wolf ---------------
-
-/**
- * @brief Wolf scheme
- */
-class Wolf : public EnergyImplementation<Wolf> {
-  private:
-    double alpha;               //!< Damping-parameter
-    double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
-    const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
-    const double pi = 4.0 * std::atan(1.0);
-
-  public:
-    /**
-     * @param cutoff distance cutoff
-     * @param alpha damping-parameter
-     */
-    inline Wolf(double cutoff, double alpha) : EnergyImplementation(Scheme::wolf, cutoff), alpha(alpha) {
-        name = "Wolf";
-        has_dipolar_selfenergy = true;
-        doi = "10.1063/1.478738";
-        alphaRed = alpha * cutoff;
-        alphaRed2 = alphaRed * alphaRed;
-        setSelfEnergyPrefactor(
-            {-alphaRed / pi_sqrt - std::erfc(alphaRed) / 2.0, -powi(alphaRed, 3) * 2.0 / 3.0 / pi_sqrt});
-        setSelfFieldPrefactor({0.0, 0.0});
-        T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
-        chi = 2.0 * std::sqrt(pi) * cutoff * cutoff *
-              (3.0 * std::exp(-alphaRed2) * alphaRed -
-               std::sqrt(pi) * (std::erfc(alphaRed) * alphaRed2 + 3.0 * std::erf(alphaRed) * 0.5)) /
-              (3.0 * alphaRed2);
-    }
-
-    inline double short_range_function(double q) const override {
-        return (std::erfc(alphaRed * q) - q * std::erfc(alphaRed));
-    }
-    inline double short_range_function_derivative(double q) const override {
-        return (-2.0 * std::exp(-alphaRed2 * q * q) * alphaRed / pi_sqrt - std::erfc(alphaRed));
-    }
-    inline double short_range_function_second_derivative(double q) const override {
-        return 4.0 * std::exp(-alphaRed2 * q * q) * alphaRed2 * alphaRed * q / pi_sqrt;
-    }
-    inline double short_range_function_third_derivative(double q) const override {
-        return -8.0 * std::exp(-alphaRed2 * q * q) * alphaRed2 * alphaRed * (alphaRed2 * q * q - 0.5) / pi_sqrt;
-    }
-
-#ifdef NLOHMANN_JSON_HPP
-    /** Construct from JSON object, looking for `cutoff`, `alpha` */
-    inline Wolf(const nlohmann::json &j) : Wolf(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
-
-  private:
-    inline void _to_json(nlohmann::json &j) const override {
-        j = {{ "alpha", alpha }};
-    }
-#endif
 };
 
 } // namespace CoulombGalore

@@ -1,6 +1,6 @@
 #include <iostream>
 #include <nlohmann/json.hpp>
-#include "coulombgalore.h"
+#include "coulombgalore/all.h"
 
 using namespace CoulombGalore;
 

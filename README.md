@@ -31,12 +31,13 @@ doxygen (optional)
 
 ### Use in your own code
 
-Simply copy the `coulombgalore.h` file to your project. All functions and classes are encapsulated in the `CoulombGalore` namespace. Vectors are currently handled by the Eigen library, but it is straightforward to change to another library.
+Simply copy the `include/coulombgalore` directory to your project. All functions and classes are encapsulated in the `CoulombGalore` namespace.
+Vectors are currently handled by the Eigen library, but it is straightforward to change to another library.
 
 ### Example
 
 ~~~{.cpp}
-#include "coulombgalore.h"
+#include "coulombgalore/plain.h"
 int main() {
    Eigen::Vector3d R = {0,0,10};                      // distance vector
    CoulombGalore::Plain pot(14.0);                    // cutoff distance as constructor argument
