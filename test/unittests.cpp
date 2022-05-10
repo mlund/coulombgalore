@@ -919,6 +919,7 @@ TEST_CASE("[CoulombGalore] Poisson") {
 }
 
 TEST_CASE("[CoulombGalore] createScheme") {
+#ifdef NLOHMANN_JSON_HPP
     using doctest::Approx;
     double cutoff = 29.0;   // cutoff distance
     double zA = 2.0;        // charge
@@ -927,7 +928,6 @@ TEST_CASE("[CoulombGalore] createScheme") {
     vec3 r = {23, 0, 0}; // distance vector
     vec3 rh = {1, 0, 0}; // normalized distance vector
 
-#ifdef NLOHMANN_JSON_HPP
     // create scheme dynamically through a json object
     auto pot = createScheme({{"type", "plain"}});
 

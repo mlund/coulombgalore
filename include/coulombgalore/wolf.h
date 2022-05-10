@@ -32,7 +32,6 @@ namespace CoulombGalore {
  */
 class Wolf : public EnergyImplementation<Wolf> {
   private:
-    double alpha;               //!< Damping-parameter
     double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
     const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
     const double pi = 4.0 * std::atan(1.0);
@@ -42,7 +41,7 @@ class Wolf : public EnergyImplementation<Wolf> {
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
      */
-    inline Wolf(double cutoff, double alpha) : EnergyImplementation(Scheme::wolf, cutoff), alpha(alpha) {
+    inline Wolf(double cutoff, double alpha) : EnergyImplementation(Scheme::wolf, cutoff) {
         name = "Wolf";
         has_dipolar_selfenergy = true;
         doi = "10.1063/1.478738";

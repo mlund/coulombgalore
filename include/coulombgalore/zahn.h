@@ -32,7 +32,6 @@ namespace CoulombGalore {
  */
 class Zahn : public EnergyImplementation<Zahn> {
   private:
-    double alpha;               //!< Damping-parameter
     double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
     const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
     const double pi = 4.0 * std::atan(1.0);
@@ -43,7 +42,7 @@ class Zahn : public EnergyImplementation<Zahn> {
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
      */
-    inline Zahn(double cutoff, double alpha) : EnergyImplementation(Scheme::zahn, cutoff), alpha(alpha) {
+    inline Zahn(double cutoff, double alpha) : EnergyImplementation(Scheme::zahn, cutoff) {
         name = "Zahn";
         has_dipolar_selfenergy = false;
         doi = "10.1021/jp025949h";

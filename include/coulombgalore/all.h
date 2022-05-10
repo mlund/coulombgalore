@@ -25,6 +25,7 @@
 #pragma once
 
 #include "ewald.h"
+#include "ewald_truncated.h"
 #include "fanourgakis.h"
 #include "fennell.h"
 #include "plain.h"

@@ -32,7 +32,6 @@ namespace CoulombGalore {
  */
 class Fennell : public EnergyImplementation<Fennell> {
   private:
-    double alpha;               //!< Damping-parameter
     double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
     const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
     const double pi = 4.0 * std::atan(1.0);
@@ -42,7 +41,7 @@ class Fennell : public EnergyImplementation<Fennell> {
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
      */
-    inline Fennell(double cutoff, double alpha) : EnergyImplementation(Scheme::fennell, cutoff), alpha(alpha) {
+    inline Fennell(double cutoff, double alpha) : EnergyImplementation(Scheme::fennell, cutoff) {
         name = "Fennell";
         has_dipolar_selfenergy = false;
         doi = "10.1063/1.2206581";
