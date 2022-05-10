@@ -696,7 +696,7 @@ TEST_CASE("[CoulombGalore] Ewald (truncated Gaussian) real-space") {
     double cutoff = 29.0; // cutoff distance
     double alpha = 0.1;   // damping-parameter
     double eps_sur = infinity;
-    EwaldT pot(cutoff, alpha, eps_sur);
+    EwaldTruncated pot(cutoff, alpha, eps_sur);
 
     CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.2257993685));
     CHECK(pot.self_energy({0.0, 2.0}) == Approx(-0.0007528321650));

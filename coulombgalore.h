@@ -1658,7 +1658,7 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
 /**
  * @brief Ewald real-space scheme using a truncated Gaussian screening-function.
  */
-class EwaldT : public EnergyImplementation<EwaldT> {
+class EwaldTruncated : public EnergyImplementation<EwaldTruncated> {
     double eta, eta2, eta3; //!< Reduced damping-parameter, and squared, and cubed
     // double zeta, zeta2, zeta3;             //!< Reduced inverse Debye-length, and squared, and cubed
     double surface_dielectric_constant; //!< Dielectric constant of the surrounding medium
@@ -1671,7 +1671,7 @@ class EwaldT : public EnergyImplementation<EwaldT> {
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
      */
-    inline EwaldT(double cutoff, double alpha, double surface_dielectric_constant = infinity,
+    inline EwaldTruncated(double cutoff, double alpha, double surface_dielectric_constant = infinity,
                   [[maybe_unused]] double debye_length = infinity)
         : EnergyImplementation(Scheme::ewaldt, cutoff), surface_dielectric_constant(surface_dielectric_constant) {
         name = "EwaldT real-space";
@@ -1731,8 +1731,8 @@ class EwaldT : public EnergyImplementation<EwaldT> {
     }
 
 #ifdef NLOHMANN_JSON_HPP
-    inline EwaldT(const nlohmann::json &j)
-        : EwaldT(j.at("cutoff").get<double>(), j.at("alpha").get<double>(), j.value("epss", infinity),
+    inline EwaldTruncated(const nlohmann::json &j)
+        : EwaldTruncated(j.at("cutoff").get<double>(), j.at("alpha").get<double>(), j.value("epss", infinity),
                  j.value("debyelength", infinity)) {}
 
   private:
@@ -2446,7 +2446,7 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
         scheme = std::make_shared<Ewald>(j);
         break;
     case Scheme::ewaldt:
-        scheme = std::make_shared<EwaldT>(j);
+        scheme = std::make_shared<EwaldTruncated>(j);
         break;
     case Scheme::poisson:
         scheme = std::make_shared<Poisson>(j);
