@@ -1358,11 +1358,16 @@ class ReciprocalEwaldState {
     }
     template <typename Positions, typename Charges, typename Dipoles>
     vec3 dipoleMoment(const Positions &positions, const Charges &charges, const Dipoles &dipoles) const {
-        vec3 dipole = {0.0, 0.0, 0.0};
-        for (int i = 0; i < (int)positions.size(); i++) {
-            dipole += positions[i] * charges[i] + dipoles[i];
+        vec3 sum = {0.0, 0.0, 0.0};
+        auto charge = charges.begin();
+        for (const auto &position : positions) {
+            sum += position * (*charge);
+            charge++;
         }
-        return dipole;
+        for (const auto &dipole : dipoles) {
+            sum += dipole;
+        }
+        return sum;
     }
 };
 
@@ -1499,20 +1504,24 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
     /**
      * @brief Calculates Q value
      * @param positions Positions of particles
-     * @param charges Charges of particles
-     * @param dipoles Dipole moments of particles
+     * @param charges Charges of particles (must have same length as positions)
+     * @param dipoles Dipole moments of particles (must have same length as positions)
      * @param k Single k-vector
      * @todo May be optimized to splitting into several loops for cos/sin, enabling SIMD optimization
      */
     template <typename Positions, typename Charges, typename Dipoles>
-    auto calcQ(const vec3 &k, Positions &positions, Charges &charges, Dipoles &dipoles) const {
+    auto calcQ(const vec3 &k, const Positions &positions, const Charges &charges, const Dipoles &dipoles) const {
         Tcomplex Q(0.0, 0.0);
-        for (size_t i = 0; i < positions.size(); i++) {
-            const double kr = k.dot(positions[i]); // 𝒌⋅𝒓
+        auto charge = charges.begin();
+        auto dipole = dipoles.begin();
+        std::for_each(positions.begin(), positions.end(), [&](const auto &position) {
+            const auto kr = k.dot(position); // 𝒌⋅𝒓
             const auto cos_kr = std::cos(kr);
             const auto sin_kr = std::sin(kr);
-            Q += charges[i] * Tcomplex(cos_kr, sin_kr) + dipoles[i].dot(k) * Tcomplex(-sin_kr, cos_kr);
-        }
+            Q += (*charge) * Tcomplex(cos_kr, sin_kr) + (*dipole).dot(k) * Tcomplex(-sin_kr, cos_kr);
+            charge++;
+            dipole++;
+        });
         return Q;
     }
 
@@ -1593,7 +1602,7 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
         vec3 sum = {0.0, 0.0, 0.0};
         for (int i = 0; i < k_vectors.cols(); i++) {
             const auto &k = k_vectors.col(i);
-            const double kr = k.dot(position); // 𝒌⋅𝒓
+            const auto kr = k.dot(position); // 𝒌⋅𝒓
             const auto qmu = Tcomplex(-dipole_moment.dot(k), charge);
             const auto repart = Tcomplex(std::cos(kr), std::sin(kr)) * qmu * std::conj(Q_mp[i]);
             sum += std::real(repart) * k * Aks[i];
@@ -1608,7 +1617,7 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
     vec3 reciprocal_field(const vec3 &position) {
         vec3 field = {0.0, 0.0, 0.0};
         for (int i = 0; i < k_vectors.cols(); i++) {
-            const double kr = k_vectors.col(i).dot(position); // 𝒌⋅𝒓
+            const auto kr = k_vectors.col(i).dot(position); // 𝒌⋅𝒓
             const auto repart = Tcomplex(-std::sin(kr), std::cos(kr)) * std::conj(Q_mp[i]);
             field += std::real(repart) * k_vectors.col(i) * Aks[i];
         }
@@ -1623,7 +1632,7 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
      */
     template <typename Positions, typename Charges, typename Dipoles>
     vec3 surface_field(const Positions &positions, const Charges &charges, const Dipoles &dipoles) const {
-        vec3 total_dipole = dipoleMoment(positions, charges, dipoles);
+        auto total_dipole = dipoleMoment(positions, charges, dipoles);
         return -4.0 * pi / (2.0 * surface_dielectric_constant + 1.0) / getVolume() * total_dipole;
     }
 
@@ -1635,7 +1644,7 @@ class ReciprocalEwaldGaussian : public ReciprocalEwaldState {
      */
     template <typename Positions, typename Charges, typename Dipoles>
     double surface_energy(const Positions &positions, const Charges &charges, const Dipoles &dipoles) const {
-        vec3 total_dipole = dipoleMoment(positions, charges, dipoles);
+        auto total_dipole = dipoleMoment(positions, charges, dipoles);
         return 2.0 * pi / (2.0 * surface_dielectric_constant + 1.0) / getVolume() * total_dipole.squaredNorm();
     }
 
