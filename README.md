@@ -31,16 +31,18 @@ doxygen (optional)
 
 ### Use in your own code
 
-Simply copy the `coulombgalore.h` file to your project. All functions and classes are encapsulated in the `CoulombGalore` namespace. Vectors are currently handled by the Eigen library, but it is straightforward to change to another library.
+Simply copy the `include/coulombgalore` directory to your project. All functions and classes are encapsulated in the `CoulombGalore` namespace.
+Vectors are currently handled by the Eigen library, but it should be possible to change to another library.
+You can import everything with `#include "coulombgalore/all.h"`, or only what you need:
 
 ### Example
 
 ~~~{.cpp}
-#include "coulombgalore.h"
+#include "coulombgalore/plain.h"
 int main() {
    Eigen::Vector3d R = {0,0,10};                      // distance vector
    CoulombGalore::Plain pot(14.0);                    // cutoff distance as constructor argument
-   double u = pot.ion_ion_energy(1.0, 1.0, R.norm()); // potential energy = 1.0*1.0/10
+   double u = pot.ion_ion_energy(1.0, 1.0, R.norm()); // potential energy = 1.0 x 1.0 / 10
 
    Eigen::Vector3d mu = {2,5,2};                      // dipole moment
    Eigen::Vector3d E = pot.dipole_field(mu, R);       // field from dipole at 𝐑
@@ -107,3 +109,4 @@ Function                    | Output unit
 `dipole_torque`             | `Z^2 / L`
 `self_energy`               | `Z^2 / L`
 `neutralization_energy`     | `Z^2 / L`
+

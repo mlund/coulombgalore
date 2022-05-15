@@ -5,7 +5,7 @@
 
 #include <doctest/doctest.h>
 #include <nlohmann/json.hpp>
-#include "coulombgalore.h"
+#include "coulombgalore/all.h"
 
 using namespace CoulombGalore;
 
@@ -696,7 +696,7 @@ TEST_CASE("[CoulombGalore] Ewald (truncated Gaussian) real-space") {
     double cutoff = 29.0; // cutoff distance
     double alpha = 0.1;   // damping-parameter
     double eps_sur = infinity;
-    EwaldT pot(cutoff, alpha, eps_sur);
+    EwaldTruncated pot(cutoff, alpha, eps_sur);
 
     CHECK(pot.self_energy({4.0, 0.0}) == Approx(-0.2257993685));
     CHECK(pot.self_energy({0.0, 2.0}) == Approx(-0.0007528321650));
@@ -919,6 +919,7 @@ TEST_CASE("[CoulombGalore] Poisson") {
 }
 
 TEST_CASE("[CoulombGalore] createScheme") {
+#ifdef NLOHMANN_JSON_HPP
     using doctest::Approx;
     double cutoff = 29.0;   // cutoff distance
     double zA = 2.0;        // charge
@@ -927,7 +928,6 @@ TEST_CASE("[CoulombGalore] createScheme") {
     vec3 r = {23, 0, 0}; // distance vector
     vec3 rh = {1, 0, 0}; // normalized distance vector
 
-#ifdef NLOHMANN_JSON_HPP
     // create scheme dynamically through a json object
     auto pot = createScheme({{"type", "plain"}});
 
