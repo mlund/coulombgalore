@@ -24,7 +24,7 @@
 */
 #pragma once
 
-#include "ewald.h"
+#include "coulombgalore/ewald.hpp"
 
 namespace CoulombGalore {
 

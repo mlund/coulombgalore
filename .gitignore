@@ -17,3 +17,5 @@ example
 unittests
 _deps
 html/
+build/
+.DS_Store

@@ -1,9 +1,9 @@
 #include <iostream>
 #include <nlohmann/json.hpp>
-#include "coulombgalore/plain.h"
-#include "coulombgalore/qpotential.h"
-#include "coulombgalore/fanourgakis.h"
-#include "coulombgalore/ewald.h"
+#include "coulombgalore/plain.hpp"
+#include "coulombgalore/qpotential.hpp"
+#include "coulombgalore/fanourgakis.hpp"
+#include "coulombgalore/ewald.hpp"
 
 using namespace CoulombGalore;
 
