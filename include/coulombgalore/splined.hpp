@@ -24,7 +24,7 @@
  */
 #pragma once
 
-#include "core.h"
+#include "coulombgalore/core.hpp"
 
 namespace CoulombGalore {
 namespace Tabulate {

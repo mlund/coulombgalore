@@ -5,7 +5,7 @@
 
 #include <doctest/doctest.h>
 #include <nlohmann/json.hpp>
-#include "coulombgalore/all.h"
+#include "coulombgalore/all.hpp"
 
 using namespace CoulombGalore;
 

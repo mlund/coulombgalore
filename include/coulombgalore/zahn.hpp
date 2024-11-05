@@ -24,13 +24,13 @@
  */
 
 #pragma once
-#include "core.h"
+#include "coulombgalore/core.hpp"
 
 namespace CoulombGalore {
 /**
- * @brief Zero-dipole scheme
+ * @brief Zahn scheme
  */
-class ZeroDipole : public EnergyImplementation<ZeroDipole> {
+class Zahn : public EnergyImplementation<Zahn> {
   private:
     double alphaRed, alphaRed2; //!< Reduced damping-parameter, and squared
     const double pi_sqrt = 2.0 * std::sqrt(std::atan(1.0));
@@ -38,51 +38,46 @@ class ZeroDipole : public EnergyImplementation<ZeroDipole> {
 
   public:
     /**
+     * @brief Contructor
      * @param cutoff distance cutoff
      * @param alpha damping-parameter
      */
-    inline ZeroDipole(double cutoff, double alpha) : EnergyImplementation(Scheme::zerodipole, cutoff) {
-        name = "ZeroDipole";
-        has_dipolar_selfenergy = true;
-        doi = "10.1063/1.3582791";
+    inline Zahn(double cutoff, double alpha) : EnergyImplementation(Scheme::zahn, cutoff) {
+        name = "Zahn";
+        has_dipolar_selfenergy = false;
+        doi = "10.1021/jp025949h";
         alphaRed = alpha * cutoff;
         alphaRed2 = alphaRed * alphaRed;
-        setSelfEnergyPrefactor(
-            {-alphaRed * (1.0 + 0.5 * std::exp(-alphaRed2)) / pi_sqrt - 0.75 * std::erfc(alphaRed),
-             -alphaRed * (2.0 * alphaRed2 * (1.0 / 3.0) + std::exp(-alphaRed2)) / pi_sqrt - 0.5 * std::erfc(alphaRed)});
+        setSelfEnergyPrefactor({-alphaRed * (1.0 - std::exp(-alphaRed2)) / pi_sqrt + 0.5 * std::erfc(alphaRed),
+                                0.0}); // Dipole self-energy undefined!
         setSelfFieldPrefactor({0.0, 0.0});
         T0 = short_range_function_derivative(1.0) - short_range_function(1.0) + short_range_function(0.0);
-        chi = cutoff * cutoff *
-              ((6.0 * alphaRed2 - 15.0) * std::erf(alphaRed) * pi - 6.0 * pi * alphaRed2 +
-               (8.0 * alphaRed2 + 30.0) * alphaRed * std::exp(-alphaRed2) * std::sqrt(pi)) /
-              (15.0 * alphaRed2);
+        chi = -(2.0 * (alphaRed * (alphaRed2 - 3.0) * std::exp(-alphaRed2) -
+                       0.5 * std::sqrt(pi) * ((7.0 - 3.0 / alphaRed2) * std::erf(alphaRed) - 7.0) * alphaRed2)) *
+              cutoff * cutoff * std::sqrt(pi) / (3.0 * alphaRed2);
     }
 
     inline double short_range_function(double q) const override {
-        return (std::erfc(alphaRed * q) - q * std::erfc(alphaRed) +
-                0.5 * (q * q - 1.0) * q * (std::erfc(alphaRed) + 2.0 * alphaRed * std::exp(-alphaRed2) / pi_sqrt));
+        return (std::erfc(alphaRed * q) -
+                (q - 1.0) * q * (std::erfc(alphaRed) + 2.0 * alphaRed * std::exp(-alphaRed2) / pi_sqrt));
     }
     inline double short_range_function_derivative(double q) const override {
-        return (alphaRed * ((3.0 * q * q - 1.0) * std::exp(-alphaRed2) - 2.0 * std::exp(-alphaRed2 * q * q)) / pi_sqrt +
-                1.5 * std::erfc(alphaRed) * (q * q - 1.0));
+        return (-(4.0 * (0.5 * std::exp(-alphaRed2 * q * q) * alphaRed +
+                         (alphaRed * std::exp(-alphaRed2) + 0.5 * pi_sqrt * std::erfc(alphaRed)) * (q - 0.5))) /
+                pi_sqrt);
     }
     inline double short_range_function_second_derivative(double q) const override {
-        return (2.0 * alphaRed * q * (2.0 * alphaRed2 * std::exp(-alphaRed2 * q * q) + 3.0 * std::exp(-alphaRed2)) /
-                    pi_sqrt +
-                3.0 * q * std::erfc(alphaRed));
+        return (4.0 * (alphaRed2 * alphaRed * q * std::exp(-alphaRed2 * q * q) - alphaRed * std::exp(-alphaRed2) -
+                       0.5 * pi_sqrt * std::erfc(alphaRed))) /
+               pi_sqrt;
     }
     inline double short_range_function_third_derivative(double q) const override {
-        return (2.0 * alphaRed *
-                    (2.0 * alphaRed2 * (1.0 - 2.0 * alphaRed2 * q * q) * std::exp(-alphaRed2 * q * q) +
-                     3.0 * std::exp(-alphaRed2)) /
-                    pi_sqrt +
-                3.0 * std::erfc(alphaRed));
+        return (-8.0 * std::exp(-alphaRed2 * q * q) * (alphaRed2 * q * q - 0.5) * alphaRed2 * alphaRed / pi_sqrt);
     }
 
 #ifdef NLOHMANN_JSON_HPP
-    /** Construct from JSON object, looking for `cutoff`, `alpha` */
-    inline ZeroDipole(const nlohmann::json &j)
-        : ZeroDipole(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
+    /** Construct from JSON object, looking for keywords `cutoff`, `alpha` */
+    inline Zahn(const nlohmann::json &j) : Zahn(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
 
   private:
     inline void _to_json(nlohmann::json &j) const override { j = {{"alpha", alpha}}; }
