@@ -21,7 +21,7 @@ enable_testing()
 include(cmake/CPM.cmake)
 
 # dependencies 
-CPMAddPackage("gh:doctest/doctest#v2.4.11")
+CPMAddPackage("gh:doctest/doctest#v2.4.12")
 CPMAddPackage("gh:nlohmann/json@3.11.3")
 CPMAddPackage("gh:TheLartians/PackageProject.cmake@1.12.0")
 
