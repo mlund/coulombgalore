@@ -23,10 +23,10 @@ Focus is on approximate truncation schemes that offer fast alternatives to Ewald
 The CMake build will automatically download Eigen, json, and doctest.
 
 ~~~ bash
-cmake .
+cmake -B build
+cd build/
 make
 make test (optional)
-doxygen (optional)
 ~~~
 
 ### Use in your own code
