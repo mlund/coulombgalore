@@ -22,7 +22,7 @@ include(cmake/CPM.cmake)
 
 # dependencies 
 CPMAddPackage("gh:doctest/doctest#v2.4.12")
-CPMAddPackage("gh:nlohmann/json@3.11.3")
+CPMAddPackage("gh:nlohmann/json@3.12.0")
 CPMAddPackage("gh:TheLartians/PackageProject.cmake@1.12.0")
 
 CPMAddPackage(NAME Eigen VERSION 3.4.0 DOWNLOAD_ONLY YES
@@ -71,10 +71,10 @@ packageProject(
 
 # example
 add_executable(example EXCLUDE_FROM_ALL test/example.cpp)
-target_link_libraries(example ${PROJECT_NAME} nlohmann_json)
+target_link_libraries(example PRIVATE ${PROJECT_NAME} nlohmann_json)
 
 # unittests
 add_executable(tests test/unittests.cpp)
-target_link_libraries(tests ${PROJECT_NAME} doctest Eigen nlohmann_json)
+target_link_libraries(tests PRIVATE ${PROJECT_NAME} doctest Eigen nlohmann_json)
 add_test(NAME tests COMMAND tests)
 
