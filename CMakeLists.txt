@@ -58,8 +58,6 @@ endif()
 # header paths
 string(TOLOWER ${PROJECT_NAME}/version.h VERSION_HEADER_LOCATION)
 
-add_compile_definitions("NLOHMANN_JSON_HPP") # older versions used this macro. Now it's suffixed with "_"
-
 packageProject(
     NAME ${PROJECT_NAME}
     VERSION ${PROJECT_VERSION}

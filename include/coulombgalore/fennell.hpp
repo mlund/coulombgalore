@@ -77,7 +77,7 @@ class Fennell : public EnergyImplementation<Fennell> {
     inline Fennell(const nlohmann::json &j) : Fennell(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
 
   private:
-    inline void _to_json(nlohmann::json &j) const override { j = {{"alpha", alpha}}; }
+    inline void _to_json(nlohmann::json &j) const override { j = {{"alpha_red", alphaRed}}; }
 #endif
 };
 

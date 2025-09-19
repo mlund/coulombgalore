@@ -80,7 +80,7 @@ class Zahn : public EnergyImplementation<Zahn> {
     inline Zahn(const nlohmann::json &j) : Zahn(j.at("cutoff").get<double>(), j.at("alpha").get<double>()) {}
 
   private:
-    inline void _to_json(nlohmann::json &j) const override { j = {{"alpha", alpha}}; }
+    inline void _to_json(nlohmann::json &j) const override { j = {{"alpha", alphaRed}}; }
 #endif
 };
 
