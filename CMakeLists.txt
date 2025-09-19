@@ -72,9 +72,11 @@ packageProject(
 # example
 add_executable(example EXCLUDE_FROM_ALL test/example.cpp)
 target_link_libraries(example PRIVATE ${PROJECT_NAME} nlohmann_json)
+target_include_directories(example INTERFACE ${Eigen_SOURCE_DIR})
 
 # unittests
 add_executable(tests test/unittests.cpp)
-target_link_libraries(tests PRIVATE ${PROJECT_NAME} doctest Eigen nlohmann_json)
+target_link_libraries(tests PRIVATE ${PROJECT_NAME} doctest nlohmann_json)
+target_include_directories(tests INTERFACE ${Eigen_SOURCE_DIR})
 add_test(NAME tests COMMAND tests)
 
