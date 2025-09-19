@@ -28,16 +28,6 @@
 
 namespace CoulombGalore {
 
-#ifdef NLOHMANN_JSON_HPP
-NLOHMANN_JSON_SERIALIZE_ENUM(ReciprocalEwaldState::Policies, {
-                                                                 {ReciprocalEwaldState::INVALID, nullptr},
-                                                                 {ReciprocalEwaldState::PBC, "PBC"},
-                                                                 {ReciprocalEwaldState::PBCEigen, "PBCEigen"},
-                                                                 {ReciprocalEwaldState::IPBC, "IPBC"},
-                                                                 {ReciprocalEwaldState::IPBCEigen, "IPBCEigen"},
-                                                             })
-#endif
-
 // -------------- Ewald real-space (using Gaussian) ---------------
 
 /**
@@ -102,6 +92,16 @@ class ReciprocalEwaldState {
         return sum;
     }
 };
+
+#ifdef NLOHMANN_JSON_HPP
+NLOHMANN_JSON_SERIALIZE_ENUM(ReciprocalEwaldState::Policies, {
+                                                                 {ReciprocalEwaldState::INVALID, nullptr},
+                                                                 {ReciprocalEwaldState::PBC, "PBC"},
+                                                                 {ReciprocalEwaldState::PBCEigen, "PBCEigen"},
+                                                                 {ReciprocalEwaldState::IPBC, "IPBC"},
+                                                                 {ReciprocalEwaldState::IPBCEigen, "IPBCEigen"},
+                                                             })
+#endif
 
 /**
  * @brief Ewald real-space scheme using a Gaussian screening-function.
