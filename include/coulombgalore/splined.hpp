@@ -264,7 +264,7 @@ template <typename T = double> class Andrea : public TabulatorBase<T> {
         if (i >= mngrid)
             throw std::runtime_error("Andrea spline: try to increase utol/ftol");
 
-            // create final reversed c and r2
+        // create final reversed c and r2
 #if __cplusplus >= 201703L
         // C++17 only code
         assert(td.c.size() % 6 == 0);

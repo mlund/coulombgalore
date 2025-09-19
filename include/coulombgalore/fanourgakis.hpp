@@ -68,5 +68,4 @@ class Fanourgakis : public EnergyImplementation<Fanourgakis> {
 #endif
 };
 
-
 } // namespace CoulombGalore

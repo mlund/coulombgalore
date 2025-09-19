@@ -104,6 +104,4 @@ inline std::shared_ptr<SchemeBase> createScheme(const nlohmann::json &j) {
 }
 #endif
 
-
-} // end of namespace
-
+} // namespace CoulombGalore
